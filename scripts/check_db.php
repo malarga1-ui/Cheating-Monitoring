@@ -3,10 +3,10 @@ require_once dirname(__DIR__) . '/app/bootstrap.php';
 
 echo "=== DATABASE DEBUG SCRIPT ===\n";
 
-$accounts = Database::fetchAll("SELECT id, name, api_secret, site_domain FROM accounts");
+$accounts = Database::fetchAll("SELECT id, org_name, api_secret, site_domain FROM accounts");
 echo "ACCOUNTS:\n";
 foreach ($accounts as $a) {
-    echo " - ID: {$a['id']}, Name: {$a['name']}, Secret: {$a['api_secret']}, Domain: {$a['site_domain']}\n";
+    echo " - ID: {$a['id']}, Name: {$a['org_name']}, Secret: {$a['api_secret']}, Domain: {$a['site_domain']}\n";
 }
 
 echo "\nADMINS:\n";
