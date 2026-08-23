@@ -478,6 +478,54 @@ function ExamDetail() {
   )
 }
 
+/* ─── Shared: Course Student Table ────────────────────────── */
+function CourseStudentTable({ students }) {
+  const navigate = useNavigate()
+  if (!Array.isArray(students) || students.length === 0) return <Empty text="لا يوجد طلاب مسجلين في هذا المساق" />
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50/70 text-xs font-extrabold text-slate-500">
+              <th className="px-4 py-3 text-start">الطالب</th>
+              <th className="px-3 py-3 text-center">الامتحانات المنجزة</th>
+              <th className="px-3 py-3 text-center">أعلى خطورة</th>
+              <th className="px-3 py-3 text-start">الحالة</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {students.map(s => {
+              const participated = s.exams_count > 0
+              return (
+                <tr key={s.student_id || s.id} 
+                  onClick={() => participated ? navigate(`/teacher/portal/students/${s.student_id || s.id}`) : null}
+                  className={`transition-colors ${participated ? 'cursor-pointer hover:bg-brand-50/30' : 'opacity-60 bg-slate-50'}`}>
+                  <td className="px-4 py-3">
+                    <p className={`font-bold ${participated ? 'text-slate-700' : 'text-slate-500'}`}>{s.fullname}</p>
+                    <p className="text-[11px] text-slate-400">{s.username}</p>
+                  </td>
+                  <td className="px-3 py-3 text-center font-bold text-slate-600">{s.exams_count}</td>
+                  <td className="px-3 py-3 text-center">
+                    {participated ? <RiskBadge level={s.risk_level} score={s.risk_score} /> : <span className="text-slate-300">—</span>}
+                  </td>
+                  <td className="px-3 py-3 text-start">
+                    {participated ? (
+                      <span className="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">مشارك</span>
+                    ) : (
+                      <span className="inline-flex rounded-full bg-slate-200/50 px-2 py-0.5 text-[10px] font-bold text-slate-500">لم يقدم اختبار بعد</span>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 /* ─── SUB-PAGE: Course Detail ────────────────────────────── */
 function CourseDetail() {
   const { id } = useParams()
@@ -508,6 +556,11 @@ function CourseDetail() {
       <section>
         <h3 className="mb-3 text-sm font-extrabold text-slate-700">امتحانات المساق ({data.exams?.length || 0})</h3>
         <ExamTable exams={data.exams || []} onRowClick={(eid) => navigate(`/teacher/portal/exams/${eid}`)} />
+      </section>
+
+      <section>
+        <h3 className="mb-3 text-sm font-extrabold text-slate-700">طلاب المساق ({data.students?.length || 0})</h3>
+        <CourseStudentTable students={data.students || []} />
       </section>
     </div>
   )

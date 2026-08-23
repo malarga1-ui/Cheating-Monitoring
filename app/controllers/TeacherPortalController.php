@@ -1279,6 +1279,29 @@ final class TeacherPortalController
             [$accountId, $courseMoodleId]
         );
 
+        $students = Database::fetchAll(
+            "SELECT s.id AS student_id, s.moodle_user_id, s.fullname, s.username,
+                    (SELECT COUNT(DISTINCT ss.exam_id) FROM session_summaries ss JOIN exams e ON e.id = ss.exam_id WHERE ss.student_id = s.id AND e.moodle_course_id = cs.moodle_course_id AND ss.account_id = cs.account_id) AS exams_count,
+                    (SELECT MAX(ss.risk_score) FROM session_summaries ss JOIN exams e ON e.id = ss.exam_id WHERE ss.student_id = s.id AND e.moodle_course_id = cs.moodle_course_id AND ss.account_id = cs.account_id) AS risk_score,
+                    (SELECT ss.risk_level FROM session_summaries ss JOIN exams e ON e.id = ss.exam_id WHERE ss.student_id = s.id AND e.moodle_course_id = cs.moodle_course_id AND ss.account_id = cs.account_id ORDER BY ss.risk_score DESC LIMIT 1) AS risk_level
+               FROM course_students cs
+               JOIN students s ON s.moodle_user_id = cs.moodle_user_id AND s.account_id = cs.account_id
+              WHERE cs.account_id = ? AND cs.moodle_course_id = ?",
+            [$accountId, $courseMoodleId]
+        );
+
+        usort($students, function ($a, $b) {
+            $aTook = ((int)$a['exams_count'] > 0) ? 1 : 0;
+            $bTook = ((int)$b['exams_count'] > 0) ? 1 : 0;
+            if ($aTook !== $bTook) return $bTook <=> $aTook;
+            
+            $aRisk = (int)($a['risk_score'] ?? 0);
+            $bRisk = (int)($b['risk_score'] ?? 0);
+            if ($aRisk !== $bRisk) return $bRisk <=> $aRisk;
+            
+            return mb_strcmp($a['fullname'] ?? '', $b['fullname'] ?? '');
+        });
+
         Response::ok([
             'course' => [
                 'id'                => (int)$course['id'],
@@ -1300,7 +1323,18 @@ final class TeacherPortalController
                 'teacher_id' => (int)$t['teacher_id'],
                 'fullname'   => $t['fullname'],
                 'username'   => $t['username'],
+                'is_me'      => (int)$t['teacher_id'] === $teacherId,
             ], $coTeachers),
+            'students' => array_map(fn($s) => [
+                'id'           => (int)$s['student_id'],
+                'student_id'   => (int)$s['student_id'],
+                'moodle_user_id'=> (int)$s['moodle_user_id'],
+                'fullname'     => (string)$s['fullname'],
+                'username'     => (string)$s['username'],
+                'exams_count'  => (int)$s['exams_count'],
+                'risk_score'   => (int)($s['risk_score'] ?? 0),
+                'risk_level'   => (string)($s['risk_level'] ?? 'safe'),
+            ], $students),
         ]);
     }
 
