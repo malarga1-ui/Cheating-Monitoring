@@ -1,0 +1,6 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/luckhdvn/jadallahkhaled.com/exammonitor
+    - /bin/cp -r * $DEPLOYPATH
+    - /bin/cp .htaccess $DEPLOYPATH/public/.htaccess 2>/dev/null || true
