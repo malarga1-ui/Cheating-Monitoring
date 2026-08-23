@@ -224,10 +224,18 @@ function StudentTable({ students, compact = false }) {
               <th className="px-4 py-3 text-start">الطالب</th>
               {!compact && <th className="px-3 py-3 text-center">الامتحانات</th>}
               <th className="px-3 py-3 text-center">الدرجة</th>
-              <th className="px-3 py-3 text-center" title="نسخ/لصق/إخفاء/أدوات">🛡️ سلوكي</th>
-              <th className="px-3 py-3 text-center" title="مشاركة IP">🌐 شبكة</th>
-              <th className="px-3 py-3 text-center" title="ذكاء اصطناعي">🤖 AI</th>
-              <th className="px-3 py-3 text-center" title="تشابه">🔗 تشابه</th>
+              <th className="px-3 py-3 text-center" title="نسخ/لصق/إخفاء/أدوات">
+                <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700 ring-1 ring-rose-200/50">🛡️ سلوكي</span>
+              </th>
+              <th className="px-3 py-3 text-center" title="مشاركة IP">
+                <span className="inline-flex items-center gap-1 rounded-md bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700 ring-1 ring-violet-200/50">🌐 شبكة</span>
+              </th>
+              <th className="px-3 py-3 text-center" title="ذكاء اصطناعي">
+                <span className="inline-flex items-center gap-1 rounded-md bg-cyan-50 px-2 py-1 text-[10px] font-bold text-cyan-700 ring-1 ring-cyan-200/50">🤖 AI</span>
+              </th>
+              <th className="px-3 py-3 text-center" title="تشابه">
+                <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700 ring-1 ring-amber-200/50">🔗 تشابه</span>
+              </th>
               {!compact && <th className="px-3 py-3 text-center">📋 نسخ</th>}
               {!compact && <th className="px-3 py-3 text-center">📥 لصق</th>}
               {!compact && <th className="px-3 py-3 text-center">👁️ إخفاء</th>}
