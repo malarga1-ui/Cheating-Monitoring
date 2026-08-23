@@ -174,6 +174,25 @@ final class SyncController
             $synced['enrollments']++;
         }
 
+        // 6. Student <-> Course assignments
+        $student_enrollments = $body['student_enrollments'] ?? [];
+        $synced['student_enrollments'] = 0;
+        foreach ($student_enrollments as $se) {
+            $cid = (int)($se['course_id'] ?? 0);
+            $sid = (int)($se['student_id'] ?? 0);
+            if ($cid <= 0 || $sid <= 0) continue;
+            $sname = em_truncate((string)($se['student_name'] ?? ''), 255);
+            Database::execute(
+                'INSERT INTO course_students (moodle_course_id, student_id, account_id, student_name)
+                 VALUES (?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE
+                   account_id = VALUES(account_id),
+                   student_name = IF(student_name = "", VALUES(student_name), student_name)',
+                [$cid, $sid, $accountId, $sname]
+            );
+            $synced['student_enrollments']++;
+        }
+
         Response::ok(['ok' => true, 'synced' => $synced]);
     }
 

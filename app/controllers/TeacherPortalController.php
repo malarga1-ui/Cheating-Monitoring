@@ -1001,27 +1001,28 @@ final class TeacherPortalController
 
         $rows = Database::fetchAll(
             "SELECT s.id AS student_id, s.fullname, s.username,
-                    MAX(ss.risk_score) AS risk_score,
-                    MAX(ss.risk_level) AS risk_level,
-                    MAX(ss.ai_suspect_score) AS ai_suspect_score,
-                    MAX(ss.same_ip_student_count) AS same_ip_student_count,
-                    MAX(ss.same_ip_risk_score) AS same_ip_risk_score,
-                    MAX(ss.similarity_max_score) AS similarity_max_score,
-                    MAX(ss.tab_hidden_count) AS tab_hidden_count,
-                    MAX(ss.paste_count) AS paste_count,
-                    MAX(ss.copy_count) AS copy_count,
-                    MAX(ss.devtools_count) AS devtools_count,
-                    SUM(ss.event_count) AS total_events,
+                    MAX(IFNULL(ss.risk_score, 0)) AS risk_score,
+                    MAX(IFNULL(ss.risk_level, 'safe')) AS risk_level,
+                    MAX(IFNULL(ss.ai_suspect_score, 0)) AS ai_suspect_score,
+                    MAX(IFNULL(ss.same_ip_student_count, 0)) AS same_ip_student_count,
+                    MAX(IFNULL(ss.same_ip_risk_score, 0)) AS same_ip_risk_score,
+                    MAX(IFNULL(ss.similarity_max_score, 0)) AS similarity_max_score,
+                    MAX(IFNULL(ss.tab_hidden_count, 0)) AS tab_hidden_count,
+                    MAX(IFNULL(ss.paste_count, 0)) AS paste_count,
+                    MAX(IFNULL(ss.copy_count, 0)) AS copy_count,
+                    MAX(IFNULL(ss.devtools_count, 0)) AS devtools_count,
+                    SUM(IFNULL(ss.event_count, 0)) AS total_events,
                     COUNT(DISTINCT ss.exam_id) AS exams_count,
                     COUNT(DISTINCT ss.session_id) AS sessions_count,
                     MIN(ss.first_event_at) AS first_seen,
                     MAX(ss.last_event_at) AS last_seen
                FROM students s
-               JOIN session_summaries ss ON ss.student_id = s.id AND ss.account_id = s.account_id
-               JOIN exams e ON e.id = ss.exam_id
-              WHERE s.account_id = ? AND e.moodle_course_id IN ($in)
+               JOIN course_students cs ON cs.student_id = s.id AND cs.account_id = s.account_id
+               LEFT JOIN session_summaries ss ON ss.student_id = s.id AND ss.account_id = s.account_id
+                    AND ss.exam_id IN (SELECT id FROM exams WHERE account_id = ? AND moodle_course_id IN ($in))
+              WHERE s.account_id = ? AND cs.moodle_course_id IN ($in)
               GROUP BY s.id, s.fullname, s.username",
-            [$accountId]
+            [$accountId, $accountId]
         );
 
         if ($search !== '') {
@@ -1051,15 +1052,16 @@ final class TeacherPortalController
         $totals = Database::fetchOne(
             "SELECT
                 COUNT(DISTINCT s.id) AS total_students,
-                COUNT(CASE WHEN ss.risk_level IN ('high','critical') THEN 1 END) AS high_risk,
-                COUNT(CASE WHEN ss.ai_suspect_score >= 50 THEN 1 END) AS ai_flagged,
-                COUNT(CASE WHEN ss.same_ip_student_count > 0 THEN 1 END) AS network_flagged,
-                COUNT(CASE WHEN ss.similarity_max_score >= 50 THEN 1 END) AS sim_flagged
+                COUNT(DISTINCT CASE WHEN ss.risk_level IN ('high','critical') THEN s.id END) AS high_risk,
+                COUNT(DISTINCT CASE WHEN ss.ai_suspect_score >= 50 THEN s.id END) AS ai_flagged,
+                COUNT(DISTINCT CASE WHEN ss.same_ip_student_count > 0 THEN s.id END) AS network_flagged,
+                COUNT(DISTINCT CASE WHEN ss.similarity_max_score >= 50 THEN s.id END) AS sim_flagged
                FROM students s
-               JOIN session_summaries ss ON ss.student_id = s.id AND ss.account_id = s.account_id
-               JOIN exams e ON e.id = ss.exam_id
-              WHERE s.account_id = ? AND e.moodle_course_id IN ($in)",
-            [$accountId]
+               JOIN course_students cs ON cs.student_id = s.id AND cs.account_id = s.account_id
+               LEFT JOIN session_summaries ss ON ss.student_id = s.id AND ss.account_id = s.account_id
+                    AND ss.exam_id IN (SELECT id FROM exams WHERE account_id = ? AND moodle_course_id IN ($in))
+              WHERE s.account_id = ? AND cs.moodle_course_id IN ($in)",
+            [$accountId, $accountId]
         );
 
         Response::ok([
