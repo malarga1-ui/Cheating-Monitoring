@@ -1,0 +1,5 @@
+/app/config.local.php
+/storage/logs/*
+/storage/tmp_reset.php
+.env
+/node_modules/
