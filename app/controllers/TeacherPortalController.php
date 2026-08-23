@@ -1509,10 +1509,14 @@ final class TeacherPortalController
             Teachers::setDefaultPassword($uname, $teacherId, $accountId);
         }
 
+        // Run the aggregator synchronously so the teacher sees live data immediately
+        $aggResult = Aggregator::process(2000);
+
         Response::ok([
             'ok' => true,
             'courses_synced' => $synced,
             'course_ids' => array_map(fn($p) => (int)$p['moodle_course_id'], $pairs),
+            'events_aggregated' => $aggResult['processed'] ?? 0,
         ]);
     }
 }
