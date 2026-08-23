@@ -67,8 +67,20 @@ final class SyncController
     {
         $body = em_body_json();
         if (!is_array($body)) {
+            file_put_contents(__DIR__ . '/../../sync_debug.log', date('Y-m-d H:i:s') . " - Error: Invalid body\n", FILE_APPEND);
             Response::error('Body غير صالح', 400);
         }
+
+        // --- DEBUG LOGGING ---
+        $debugData = "SYNC RECEIVED at " . date('Y-m-d H:i:s') . "\n";
+        $debugData .= "Has courses: " . isset($body['courses']) . "\n";
+        $debugData .= "Has enrollments: " . isset($body['enrollments']) . "\n";
+        $debugData .= "Has student_enrollments: " . isset($body['student_enrollments']) . "\n";
+        if (isset($body['student_enrollments'])) {
+            $debugData .= "Count student_enrollments: " . count($body['student_enrollments']) . "\n";
+        }
+        file_put_contents(__DIR__ . '/../../sync_debug.log', $debugData . "\n", FILE_APPEND);
+        // ---------------------
 
         $account = self::resolveAccount($body);
         $accountId = (int)$account['id'];
