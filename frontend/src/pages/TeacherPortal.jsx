@@ -590,18 +590,73 @@ function StudentDetail() {
         <p className="text-xs text-slate-400">{s.username} · #{s.moodle_user_id}</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard value={agg.exams_count || 0} label="الامتحانات" />
-        <StatCard value={agg.total_events || 0} label="إجمالي التهديدات" tone="text-brand-600" />
-        <StatCard value={agg.max_risk || 0} label="أعلى درجة خطورة" tone={agg.max_risk >= 60 ? 'text-rose-600' : agg.max_risk >= 30 ? 'text-amber-600' : 'text-emerald-600'} />
-        <StatCard value={agg.max_ai || 0} label="أعلى AI" tone={agg.max_ai >= 50 ? 'text-cyan-600' : 'text-slate-600'} />
-      </div>
+      {/* المحددات الأربعة (The 4 Pillars) */}
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+        {/* المربع السلوكي (Behavioral) */}
+        <div className="rounded-3xl border border-rose-200/50 bg-gradient-to-br from-rose-50 to-white p-5 shadow-sm ring-1 ring-rose-100/50 relative overflow-hidden group">
+          <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-rose-500/5 transition-transform duration-500 group-hover:scale-150" />
+          <div className="relative mb-4 flex items-center justify-between">
+            <h3 className="text-sm font-extrabold text-rose-800">السلوكي (Behavioral)</h3>
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-rose-100/80 text-rose-600 shadow-sm">🛡️</span>
+          </div>
+          <div className="relative space-y-3">
+            <div className="flex justify-between items-center text-sm"><span className="font-bold text-slate-600">تهديدات إجمالية</span><span className="font-extrabold text-rose-600">{agg.total_events || 0}</span></div>
+            <div className="flex justify-between items-center text-sm"><span className="text-slate-500">إخفاء الشاشة</span><span className="font-bold text-slate-700">{agg.total_tab_hidden || 0}</span></div>
+            <div className="flex justify-between items-center text-sm"><span className="text-slate-500">نسخ / لصق</span><span className="font-bold text-slate-700">{(agg.total_copy || 0) + (agg.total_paste || 0)}</span></div>
+            <div className="flex justify-between items-center text-sm"><span className="text-slate-500">أدوات التطوير</span><span className="font-bold text-slate-700">{agg.total_devtools || 0}</span></div>
+          </div>
+        </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard value={agg.total_tab_hidden || 0} label="إخفاء تبويب" tone={agg.total_tab_hidden > 0 ? 'text-rose-600' : 'text-slate-600'} />
-        <StatCard value={agg.total_paste || 0} label="لصق" tone={agg.total_paste > 0 ? 'text-amber-600' : 'text-slate-600'} />
-        <StatCard value={agg.total_copy || 0} label="نسخ" tone={agg.total_copy > 0 ? 'text-blue-600' : 'text-slate-600'} />
-        <StatCard value={agg.total_devtools || 0} label="أدوات التطوير" tone={agg.total_devtools > 0 ? 'text-violet-600' : 'text-slate-600'} />
+        {/* مربع الذكاء الاصطناعي (AI) */}
+        <div className="rounded-3xl border border-cyan-200/50 bg-gradient-to-br from-cyan-50 to-white p-5 shadow-sm ring-1 ring-cyan-100/50 relative overflow-hidden group">
+          <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-cyan-500/5 transition-transform duration-500 group-hover:scale-150" />
+          <div className="relative mb-4 flex items-center justify-between">
+            <h3 className="text-sm font-extrabold text-cyan-800">الذكاء الاصطناعي (AI)</h3>
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-100/80 text-cyan-600 shadow-sm">🤖</span>
+          </div>
+          <div className="relative flex flex-col items-center justify-center py-2">
+            <span className={`text-5xl font-black tracking-tight ${(agg.max_ai || 0) >= 50 ? 'text-cyan-600' : 'text-slate-400'}`}>
+              {agg.max_ai || 0}<span className="text-2xl">%</span>
+            </span>
+            <span className="mt-3 text-xs font-bold text-slate-500 text-center">أعلى نسبة احتمالية استخدام أدوات الذكاء الاصطناعي في الإجابات</span>
+          </div>
+        </div>
+
+        {/* مربع التشابه (Similarity) */}
+        <div className="rounded-3xl border border-amber-200/50 bg-gradient-to-br from-amber-50 to-white p-5 shadow-sm ring-1 ring-amber-100/50 relative overflow-hidden group">
+          <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-amber-500/5 transition-transform duration-500 group-hover:scale-150" />
+          <div className="relative mb-4 flex items-center justify-between">
+            <h3 className="text-sm font-extrabold text-amber-800">التشابه (Similarity)</h3>
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-100/80 text-amber-600 shadow-sm">🔗</span>
+          </div>
+          <div className="relative flex flex-col items-center justify-center py-2">
+            <span className={`text-5xl font-black tracking-tight ${(agg.max_similarity || 0) >= 50 ? 'text-amber-600' : 'text-slate-400'}`}>
+              {agg.max_similarity || 0}<span className="text-2xl">%</span>
+            </span>
+            <span className="mt-3 text-xs font-bold text-slate-500 text-center">أعلى نسبة تطابق إجابات مع إجابات الزملاء</span>
+          </div>
+        </div>
+
+        {/* مربع الشبكة والأجهزة (Network & Device) */}
+        <div className="rounded-3xl border border-violet-200/50 bg-gradient-to-br from-violet-50 to-white p-5 shadow-sm ring-1 ring-violet-100/50 relative overflow-hidden group">
+          <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-violet-500/5 transition-transform duration-500 group-hover:scale-150" />
+          <div className="relative mb-4 flex items-center justify-between">
+            <h3 className="text-sm font-extrabold text-violet-800">الشبكة والأجهزة (Network)</h3>
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-100/80 text-violet-600 shadow-sm">🌐</span>
+          </div>
+          <div className="relative space-y-4">
+            <div className="flex flex-col text-sm pt-1">
+              <span className="text-xs text-slate-500 font-bold mb-1">آخر IP مستخدم:</span>
+              <span className="font-mono text-sm font-extrabold text-slate-700" dir="ltr">{s.last_ip || (sessions[0]?.ip_address || 'غير متوفر')}</span>
+            </div>
+            <div className="flex justify-between items-center text-sm pt-3 border-t border-violet-200/60">
+              <span className="text-slate-600 text-xs font-extrabold">مشاركة الـ IP مع طلاب آخرين:</span>
+              <span className={`px-2 py-1 rounded-md font-extrabold text-xs ${agg.max_ip_group > 0 ? 'bg-violet-100 text-violet-700' : 'bg-emerald-50 text-emerald-600'}`}>
+                {agg.max_ip_group > 0 ? `${agg.max_ip_group} طلاب` : 'لا يوجد'}
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
       {sessions.length > 0 && (
