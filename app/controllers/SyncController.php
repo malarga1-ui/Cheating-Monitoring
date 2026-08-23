@@ -115,8 +115,8 @@ final class SyncController
                  VALUES (?, ?, ?, ?, NOW())
                  ON DUPLICATE KEY UPDATE
                    account_id = VALUES(account_id),
-                   fullname = IF(fullname = "", VALUES(fullname), fullname),
-                   username = IF(username = "", VALUES(username), username)',
+                   fullname = VALUES(fullname),
+                   username = VALUES(username)',
                 [$tid, $accountId, $fullname, $username]
             );
             Teachers::setDefaultPassword($username, $tid, $accountId);
@@ -135,8 +135,8 @@ final class SyncController
                  VALUES (?, ?, ?, ?, NOW())
                  ON DUPLICATE KEY UPDATE
                    account_id = VALUES(account_id),
-                   fullname = IF(fullname = "", VALUES(fullname), fullname),
-                   username = IF(username = "", VALUES(username), username)',
+                   fullname = VALUES(fullname),
+                   username = VALUES(username)',
                 [$sid, $accountId, $fullname, $username]
             );
             $synced['students']++;
@@ -180,7 +180,7 @@ final class SyncController
                  VALUES (?, ?, ?, ?)
                  ON DUPLICATE KEY UPDATE
                    account_id = VALUES(account_id),
-                   teacher_name = IF(teacher_name = "", VALUES(teacher_name), teacher_name)',
+                   teacher_name = VALUES(teacher_name)',
                 [$cid, $tid, $accountId, $tname]
             );
             $synced['enrollments']++;
@@ -199,7 +199,7 @@ final class SyncController
                  VALUES (?, ?, ?, ?)
                  ON DUPLICATE KEY UPDATE
                    account_id = VALUES(account_id),
-                   student_name = IF(student_name = "", VALUES(student_name), student_name)',
+                   student_name = VALUES(student_name)',
                 [$cid, $sid, $accountId, $sname]
             );
             $synced['student_enrollments']++;
@@ -241,8 +241,8 @@ final class SyncController
              VALUES (?, ?, ?, ?, NOW())
              ON DUPLICATE KEY UPDATE
                account_id = IF(account_id = 0, VALUES(account_id), account_id),
-               fullname = IF(fullname = "", VALUES(fullname), fullname),
-               username = IF(username = "", VALUES(username), username),
+               fullname = VALUES(fullname),
+               username = VALUES(username),
                last_seen_at = NOW()',
             [$teacherId, $accountId, $teacherName, $username]
         );

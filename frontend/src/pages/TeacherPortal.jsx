@@ -101,7 +101,7 @@ function Header() {
   async function handleSync() {
     setSyncing(true)
     try {
-      await api.post('/api/teacher/sync-from-events')
+      await api.post('/api/sync/trigger')
       window.location.reload()
     } catch {
       // ignore
@@ -745,7 +745,7 @@ function StudentDetail() {
 /* ─── Main Export ────────────────────────────────────────── */
 export default function TeacherPortal() {
   const { user } = useAuth()
-  const [showTour, setShowTour] = useState(() => !localStorage.getItem('exammonitor_tour_done'))
+  const [showTour, setShowTour] = useState(() => !localStorage.getItem('exammonitor_teacher_tour'))
 
   if (!user) return <Navigate to="/teacher-login" replace />
   if (user.authType !== 'teacher') return <Navigate to="/admin" replace />
@@ -758,7 +758,7 @@ export default function TeacherPortal() {
       </div>
       {showTour && (
         <AppTour onFinish={() => {
-          localStorage.setItem('exammonitor_tour_done', '1')
+          localStorage.setItem('exammonitor_teacher_tour', '1')
           setShowTour(false)
         }} />
       )}

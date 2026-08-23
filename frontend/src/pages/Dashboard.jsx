@@ -55,7 +55,7 @@ export default function Dashboard() {
   const [range, setRange] = useState('24h')
   const [err, setErr] = useState('')
   const [expandedCourse, setExpandedCourse] = useState(null)
-  const [showTour, setShowTour] = useState(() => !localStorage.getItem('exammonitor_tour_done'))
+  const [showTour, setShowTour] = useState(() => !localStorage.getItem('exammonitor_admin_tour'))
 
   const REFRESH = 15000
 
@@ -83,7 +83,7 @@ export default function Dashboard() {
     <div className="space-y-6">
       {showTour && (
         <AppTour onFinish={() => {
-          localStorage.setItem('exammonitor_tour_done', '1')
+          localStorage.setItem('exammonitor_admin_tour', '1')
           setShowTour(false)
         }} />
       )}
