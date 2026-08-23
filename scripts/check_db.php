@@ -33,6 +33,12 @@ foreach ($ct as $c) {
     echo " - Account: {$c['account_id']}, Course: {$c['moodle_course_id']}, Teacher: {$c['moodle_teacher_id']}\n";
 }
 
+echo "\nEXAMS:\n";
+$ex = Database::fetchAll("SELECT id, account_id, moodle_course_id, moodle_quiz_id FROM exams");
+foreach ($ex as $e) {
+    echo " - Exam ID: {$e['id']}, Account: {$e['account_id']}, Moodle Course: {$e['moodle_course_id']}, Moodle Quiz: {$e['moodle_quiz_id']}\n";
+}
+
 echo "\nSESSION_SUMMARIES:\n";
 $ss = Database::fetchAll("SELECT id, account_id, student_id, exam_id FROM session_summaries");
 foreach ($ss as $s) {
