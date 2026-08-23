@@ -445,7 +445,7 @@ final class TeacherPortalController
               WHERE ss.exam_id IN ($ein) AND ss.account_id = ?
               ORDER BY ss.risk_score DESC
               LIMIT 20",
-            [$accountId, $accountId]
+            [$accountId]
         );
 
         Response::ok([
@@ -1455,10 +1455,7 @@ final class TeacherPortalController
                FROM events e
               WHERE e.moodle_course_id > 0
                 AND e.account_id = ?
-                AND EXISTS (
-                    SELECT 1 FROM JSON_EXTRACT(e.payload, '$.moodle.teacher') t
-                    WHERE JSON_EXTRACT(t, '$[0].id') = ?
-                )
+                AND JSON_EXTRACT(e.payload, '$.moodle.teacher[0].id') = ?
               ORDER BY e.moodle_course_id ASC",
             [$accountId, $teacherId]
         );
@@ -1495,10 +1492,7 @@ final class TeacherPortalController
                     JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.teacher[0].username')) AS uname
                FROM events e
               WHERE e.account_id = ?
-              AND EXISTS (
-                  SELECT 1 FROM JSON_EXTRACT(e.payload, '$.moodle.teacher') t
-                  WHERE JSON_EXTRACT(t, '$[0].id') = ?
-              )
+              AND JSON_EXTRACT(e.payload, '$.moodle.teacher[0].id') = ?
               ORDER BY e.id ASC LIMIT 1",
             [$accountId, $teacherId]
         );
