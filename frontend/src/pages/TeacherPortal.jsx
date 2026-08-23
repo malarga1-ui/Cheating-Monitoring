@@ -6,6 +6,9 @@ import { api } from '../api'
 import RiskBadge from '../components/RiskBadge'
 import TeacherAnalytics from './TeacherAnalytics'
 import TeacherNotifications from '../components/TeacherNotifications'
+import NetworkAnalysis from './NetworkAnalysis'
+import SimilarityDetection from './SimilarityDetection'
+import MultiDevice from './MultiDevice'
 
 function Spinner() {
   return (
@@ -111,6 +114,9 @@ function Header() {
     { to: '/teacher/portal/exams', label: 'الامتحانات' },
     { to: '/teacher/portal/courses', label: 'المساقات' },
     { to: '/teacher/portal/students', label: 'الطلاب' },
+    { to: '/teacher/portal/network', label: 'الشبكات' },
+    { to: '/teacher/portal/devices', label: 'الأجهزة' },
+    { to: '/teacher/portal/similarity', label: 'التشابه' },
   ]
 
   return (
@@ -642,6 +648,9 @@ export default function TeacherPortal() {
           <Route path="courses/:id" element={<CourseDetail />} />
           <Route path="students" element={<StudentsList />} />
           <Route path="students/:id" element={<StudentDetail />} />
+          <Route path="network" element={<NetworkAnalysis />} />
+          <Route path="devices" element={<MultiDevice />} />
+          <Route path="similarity" element={<SimilarityDetection />} />
           <Route path="*" element={<Navigate to="/teacher/portal" replace />} />
         </Routes>
       </main>
