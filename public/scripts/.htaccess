@@ -1,0 +1,5 @@
+# Force download of the install script as a plain file (never execute it).
+<FilesMatch "\.sh$">
+    AddType application/octet-stream .sh
+    Header set Content-Disposition "attachment"
+</FilesMatch>

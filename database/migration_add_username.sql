@@ -1,0 +1,1 @@
+ALTER TABLE accounts ADD COLUMN username VARCHAR(190) NOT NULL DEFAULT '' AFTER org_name;
