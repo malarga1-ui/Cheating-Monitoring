@@ -9,6 +9,7 @@ import TeacherNotifications from '../components/TeacherNotifications'
 import NetworkAnalysis from './NetworkAnalysis'
 import SimilarityDetection from './SimilarityDetection'
 import MultiDevice from './MultiDevice'
+import AppTour from '../components/AppTour'
 
 function Spinner() {
   return (
@@ -736,6 +737,7 @@ function StudentDetail() {
 /* ─── Main Export ────────────────────────────────────────── */
 export default function TeacherPortal() {
   const { user } = useAuth()
+  const [showTour, setShowTour] = useState(() => !localStorage.getItem('exammonitor_tour_done'))
 
   if (!user) return <Navigate to="/teacher-login" replace />
   if (user.authType !== 'teacher') return <Navigate to="/admin" replace />
@@ -746,6 +748,12 @@ export default function TeacherPortal() {
         <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-brand-200/40 blur-3xl" />
         <div className="absolute -left-24 top-1/3 h-80 w-80 rounded-full bg-violet-200/40 blur-3xl" />
       </div>
+      {showTour && (
+        <AppTour onFinish={() => {
+          localStorage.setItem('exammonitor_tour_done', '1')
+          setShowTour(false)
+        }} />
+      )}
       <Header />
       <main className="mx-auto max-w-6xl px-5 py-8 lg:px-8">
         <Routes>

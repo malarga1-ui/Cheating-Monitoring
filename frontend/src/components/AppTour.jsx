@@ -58,57 +58,75 @@ export default function AppTour({ onFinish }) {
   const isLast = step === STEPS.length - 1
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-brand-600 via-violet-600 to-brand-700 p-5">
-      <div className="relative w-full max-w-sm text-center">
-        <div className="mb-6 flex items-center justify-center gap-1.5">
-          {STEPS.map((_, i) => (
-            <div
-              key={i}
-              className={`h-2 rounded-full transition-all duration-300 ${
-                i === step ? 'w-8 bg-white' : i < step ? 'w-2 bg-white/60' : 'w-2 bg-white/25'
-              }`}
-            />
-          ))}
-        </div>
-
-        <div className="mb-5 flex justify-center">
-          <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-white/15 text-white backdrop-blur-sm animate-fade-up">
-            {current.icon}
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/80 p-4 backdrop-blur-md sm:p-6 md:p-12">
+      <div className="relative flex h-full w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-white/10 md:flex-row">
+        
+        {/* Right side - Visual/Gradient */}
+        <div className="relative flex w-full flex-col justify-center bg-gradient-to-br from-brand-600 via-violet-600 to-brand-800 p-8 text-white md:w-2/5 lg:w-1/3">
+          <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-20 bg-center" />
+          <div className="absolute -top-24 -right-24 h-48 w-48 rounded-full bg-white/10 blur-3xl" />
+          <div className="absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-brand-400/20 blur-3xl" />
+          
+          <div className="relative z-10 flex flex-col items-center text-center">
+            <div className="mb-8 flex h-24 w-24 items-center justify-center rounded-3xl bg-white/10 shadow-inner backdrop-blur-xl ring-1 ring-white/20 animate-fade-up">
+              {current.icon}
+            </div>
+            
+            <div className="flex gap-2 mb-8">
+              {STEPS.map((_, i) => (
+                <div
+                  key={i}
+                  className={`h-1.5 rounded-full transition-all duration-500 ${
+                    i === step ? 'w-8 bg-white' : i < step ? 'w-2 bg-white/60' : 'w-2 bg-white/20'
+                  }`}
+                />
+              ))}
+            </div>
           </div>
         </div>
 
-        <h2 className="text-2xl font-extrabold text-white animate-fade-up" style={{ animationDelay: '50ms' }}>
-          {current.title}
-        </h2>
-        <p className="mt-3 text-sm leading-relaxed text-white/80 animate-fade-up" style={{ animationDelay: '100ms' }}>
-          {current.desc}
-        </p>
+        {/* Left side - Content */}
+        <div className="flex w-full flex-col justify-center bg-white p-8 md:w-3/5 md:p-12 lg:w-2/3">
+          <div className="animate-fade-up" key={step}>
+            <h2 className="text-3xl font-black text-slate-800 md:text-4xl lg:text-5xl">
+              {current.title}
+            </h2>
+            <p className="mt-6 text-base font-medium leading-relaxed text-slate-500 md:text-lg">
+              {current.desc}
+            </p>
+          </div>
 
-        <div className="mt-8 flex gap-3 animate-fade-up" style={{ animationDelay: '150ms' }}>
-          {step > 0 && (
-            <button
-              onClick={() => setStep(step - 1)}
-              className="flex-1 rounded-xl border border-white/25 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-white/10"
-            >
-              السابق
-            </button>
-          )}
-          <button
-            onClick={() => (isLast ? onFinish() : setStep(step + 1))}
-            className="flex-1 rounded-xl bg-white px-4 py-3 text-sm font-extrabold text-brand-700 shadow-lg transition-all hover:shadow-xl active:scale-[.98]"
-          >
-            {isLast ? 'ابدأ باستخدام المنصة' : 'التالي'}
-          </button>
+          <div className="mt-12 flex items-center justify-between border-t border-slate-100 pt-8 animate-fade-up" style={{ animationDelay: '100ms' }}>
+            {!isLast ? (
+              <button
+                onClick={onFinish}
+                className="text-sm font-bold text-slate-400 transition-colors hover:text-slate-600"
+              >
+                تخطي الجولة
+              </button>
+            ) : (
+              <div />
+            )}
+
+            <div className="flex items-center gap-3">
+              {step > 0 && (
+                <button
+                  onClick={() => setStep(step - 1)}
+                  className="rounded-xl border border-slate-200 px-6 py-3 text-sm font-bold text-slate-600 transition-all hover:bg-slate-50 active:scale-95"
+                >
+                  السابق
+                </button>
+              )}
+              <button
+                onClick={() => (isLast ? onFinish() : setStep(step + 1))}
+                className="rounded-xl bg-brand-600 px-8 py-3 text-sm font-extrabold text-white shadow-lg shadow-brand-500/30 transition-all hover:bg-brand-700 hover:shadow-xl hover:shadow-brand-500/40 active:scale-95"
+              >
+                {isLast ? 'ابدأ الاستخدام' : 'التالي'}
+              </button>
+            </div>
+          </div>
         </div>
 
-        {!isLast && (
-          <button
-            onClick={onFinish}
-            className="mt-4 text-xs font-bold text-white/50 transition-colors hover:text-white/80"
-          >
-           تخطي الجولة
-          </button>
-        )}
       </div>
     </div>
   )
