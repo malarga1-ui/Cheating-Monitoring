@@ -235,7 +235,7 @@ export default function TeacherNotifications() {
                         <span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
                           a.risk_level === 'critical' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'
                         }`}>
-                          {a.risk_level === 'critical' ? 'حرج' : 'مرتفع'}
+                          {a.risk_level === 'critical' ? 'مرتفع جداً' : 'مرتفع'}
                         </span>
                         <span className="text-[10px] font-bold tabular-nums text-slate-400">{a.risk_score}%</span>
                       </div>

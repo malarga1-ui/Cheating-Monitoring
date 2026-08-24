@@ -566,7 +566,7 @@ final class Aggregator
 
         // v15: Closed-loop response — evaluate and persist automated actions
         $summaryId = (int)($existing['id'] ?? 0);
-        if ($summaryId > 0 && $risk['score'] >= 40) {
+        if ($summaryId > 0 && $risk['score'] >= 21) {
             try {
                 $catScores = [];
                 foreach (($risk['categories'] ?? []) as $cat => $info) {
@@ -802,7 +802,60 @@ final class Aggregator
                         error_log("SequenceDetection error: " . $e->getMessage());
                     }
                 }
+
+                // Re-score all sessions with full AI/similarity/network data
+                self::rescoreSessions($accountId, $examId);
             }
+        }
+    }
+
+    /**
+     * Re-compute risk_score for all sessions in an exam after analyzers
+     * have written AI, similarity, and network scores to session_summaries.
+     */
+    private static function rescoreSessions(int $accountId, int $examId): void
+    {
+        $pdo = Database::connection();
+
+        $rows = $pdo->prepare(
+            "SELECT * FROM session_summaries WHERE account_id = :a AND exam_id = :e"
+        );
+        $rows->execute([':a' => $accountId, ':e' => $examId]);
+        $summaries = $rows->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        if (empty($summaries)) return;
+
+        $update = $pdo->prepare(
+            "UPDATE session_summaries SET risk_score = :risk, risk_level = :level WHERE id = :id"
+        );
+        $updateSession = $pdo->prepare(
+            "UPDATE sessions SET risk_score = :risk, risk_level = :level WHERE session_id = :sid"
+        );
+
+        foreach ($summaries as $s) {
+            // Rebuild counters from the session_summaries row
+            $counters = $s;
+            // Ensure exam context keys exist
+            if (!isset($counters['question_count'])) {
+                $counters['question_count'] = (int)($s['question_count'] ?? 0);
+            }
+            if (!isset($counters['exam_minutes'])) {
+                $counters['exam_minutes'] = (int)($s['duration_minutes'] ?? 15);
+            }
+
+            $risk = RiskEngine::score($counters);
+
+            $update->execute([
+                ':risk' => $risk['score'],
+                ':level' => $risk['level'],
+                ':id' => $s['id'],
+            ]);
+
+            $updateSession->execute([
+                ':risk' => $risk['score'],
+                ':level' => $risk['level'],
+                ':sid' => $s['session_id'],
+            ]);
         }
     }
 

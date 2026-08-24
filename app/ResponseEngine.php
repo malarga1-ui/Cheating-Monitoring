@@ -1,39 +1,30 @@
 <?php
 /**
- * Response engine — Closed-loop SOAR response layer (Section 3.2.4).
+ * Response engine — Closed-loop SOAR response layer.
  *
- * Maps risk scores to automated actions:
- *   0–40   → Normal monitoring (no action)
- *  40–70   → Flag + increase monitoring
- *  70–90   → Instructor alert
- *  >90     → Strong action (warning + session lock)
- *
- * This closes the "Response Void Gap" identified in Chapter 2:
- *   "What's missing is a closed-loop setup — one that goes beyond just
- *    detection and actually responds in real time."
+ * Maps risk scores to automated actions based on NIST SP 800-30 risk levels:
+ *   0–4.99%   → Very Low  (no action)
+ *   5–20.99%  → Low       (no action)
+ *   21–79.99% → Moderate  (flag + increase monitoring) — alert threshold
+ *   80–95.99% → High      (instructor alert)
+ *   96–100%   → Very High (strong action: warning + session lock)
  */
 final class ResponseEngine
 {
     /**
-     * Threshold definitions from the thesis (Section 3.2.4).
-     * Each threshold: [min_score, action_type, label_ar, requires_ack]
+     * Threshold definitions from NIST SP 800-30 (Table 3.1).
      */
     private const THRESHOLDS = [
-        ['min' => 0,   'action' => 'none',            'label_ar' => 'مراقبة عادية',           'severity' => 'info',    'requires_ack' => false],
-        ['min' => 40,  'action' => 'flag_increased',  'label_ar' => ' علم + مراقبة مكثفة',     'severity' => 'warning', 'requires_ack' => false],
-        ['min' => 70,  'action' => 'alert_instructor', 'label_ar' => 'تنبيه المدرّس',          'severity' => 'high',    'requires_ack' => true],
-        ['min' => 90,  'action' => 'lock_session',    'label_ar' => '封锁 الجلسة + تحذير',      'severity' => 'critical', 'requires_ack' => true],
+        ['min' => 0,   'action' => 'none',             'label_ar' => 'مراقبة عادية',     'severity' => 'info',     'requires_ack' => false],
+        ['min' => 5,   'action' => 'none',             'label_ar' => 'منخفض',            'severity' => 'info',     'requires_ack' => false],
+        ['min' => 21,  'action' => 'flag_increased',   'label_ar' => 'مراقبة مكثفة',     'severity' => 'warning',  'requires_ack' => false],
+        ['min' => 80,  'action' => 'alert_instructor', 'label_ar' => 'تنبيه المدرّس',    'severity' => 'high',     'requires_ack' => true],
+        ['min' => 96,  'action' => 'lock_session',     'label_ar' => '封锁 الجلسة + تحذير', 'severity' => 'critical', 'requires_ack' => true],
     ];
 
     /**
      * Evaluate a risk score and return the appropriate response action.
      *
-     * @param int    $riskScore   Final risk score (0–100).
-     * @param int    $sessionId   Session summary ID.
-     * @param int    $studentId   Student ID.
-     * @param int    $examId      Exam ID.
-     * @param array  $categories  Category breakdown from RiskEngine::score().
-     * @param string $level       Risk level string from RiskEngine::score().
      * @return array{action:string, label_ar:string, severity:string, requires_ack:bool, details:array}
      */
     public static function evaluate(
@@ -52,7 +43,6 @@ final class ResponseEngine
             }
         }
 
-        // Build details payload
         $details = [
             'risk_score'   => $riskScore,
             'risk_level'   => $level,
@@ -60,9 +50,7 @@ final class ResponseEngine
             'evaluated_at' => date('Y-m-d H:i:s'),
         ];
 
-        // Enrich details based on action type
         if ($action['action'] === 'alert_instructor' || $action['action'] === 'lock_session') {
-            // Find the top contributing categories
             $topCategories = [];
             if (!empty($categories)) {
                 arsort($categories);
@@ -74,18 +62,16 @@ final class ResponseEngine
         }
 
         return [
-            'action'        => $action['action'],
-            'label_ar'      => $action['label_ar'],
-            'severity'      => $action['severity'],
-            'requires_ack'  => $action['requires_ack'],
-            'details'       => $details,
+            'action'       => $action['action'],
+            'label_ar'     => $action['label_ar'],
+            'severity'     => $action['severity'],
+            'requires_ack' => $action['requires_ack'],
+            'details'      => $details,
         ];
     }
 
     /**
      * Execute the response: persist to DB and return the action.
-     *
-     * @return array{action:string, label_ar:string, severity:string, requires_ack:bool, details:array, saved:bool}
      */
     public static function respond(
         int $riskScore,
@@ -97,13 +83,11 @@ final class ResponseEngine
     ): array {
         $evaluation = self::evaluate($riskScore, $sessionId, $studentId, $examId, $categories, $level);
 
-        // Don't log "none" actions
         if ($evaluation['action'] === 'none') {
             $evaluation['saved'] = false;
             return $evaluation;
         }
 
-        // Check if we already have a recent response for this session (avoid duplicates within 60s)
         $recent = Database::fetchOne(
             'SELECT id FROM responses
              WHERE session_summary_id = ? AND action = ? AND created_at > DATE_SUB(NOW(), INTERVAL 60 SECOND)
@@ -117,7 +101,6 @@ final class ResponseEngine
             return $evaluation;
         }
 
-        // Persist the response
         try {
             Database::execute(
                 'INSERT INTO responses
@@ -142,9 +125,6 @@ final class ResponseEngine
         return $evaluation;
     }
 
-    /**
-     * Get pending (unacknowledged) responses for a given exam, scoped by account.
-     */
     public static function pendingForExam(int $examId, int $accountId = 0): array
     {
         $sql = 'SELECT r.*, s.student_id, st.fullname, st.username
@@ -162,9 +142,6 @@ final class ResponseEngine
         return Database::fetchAll($sql, $params);
     }
 
-    /**
-     * Get all responses for a session.
-     */
     public static function forSession(int $sessionId): array
     {
         return Database::fetchAll(
@@ -173,9 +150,6 @@ final class ResponseEngine
         );
     }
 
-    /**
-     * Get summary stats for responses, scoped by account.
-     */
     public static function stats(int $accountId = 0): array
     {
         if ($accountId > 0) {
@@ -214,9 +188,6 @@ final class ResponseEngine
         ];
     }
 
-    /**
-     * Acknowledge a response (mark as reviewed by instructor).
-     */
     public static function acknowledge(int $responseId, int $ackBy = 0): bool
     {
         $affected = Database::execute(
@@ -226,9 +197,6 @@ final class ResponseEngine
         return $affected > 0;
     }
 
-    /**
-     * Bulk acknowledge all responses for an exam.
-     */
     public static function acknowledgeExam(int $examId, int $ackBy = 0): int
     {
         return (int)Database::execute(

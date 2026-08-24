@@ -1,7 +1,17 @@
+/**
+ * Risk level definitions — NIST SP 800-30 aligned (Table 3.1).
+ *
+ * Levels:
+ *   safe     [0%-4.99%]   Very Low
+ *   low      [5%-20.99%]  Low
+ *   medium   [21%-79.99%] Moderate (alert threshold)
+ *   high     [80%-95.99%] High
+ *   critical [96%-100%]   Very High
+ */
 export const RISK = {
   safe: {
-    label: 'آمن',
-    cyberLabel: 'Secure',
+    label: 'منخفض جداً',
+    cyberLabel: 'Very Low',
     threatLevel: 'GREEN',
     badge: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
     solid: 'bg-emerald-500 text-white',
@@ -9,10 +19,11 @@ export const RISK = {
     text: 'text-emerald-600',
     dot: '#10b981',
     severity: 'Informational',
+    range: '0-4.99%',
   },
   low: {
     label: 'منخفض',
-    cyberLabel: 'Low Risk',
+    cyberLabel: 'Low',
     threatLevel: 'BLUE',
     badge: 'bg-sky-50 text-sky-700 ring-1 ring-sky-200',
     solid: 'bg-sky-500 text-white',
@@ -20,6 +31,7 @@ export const RISK = {
     text: 'text-sky-600',
     dot: '#0ea5e9',
     severity: 'Low',
+    range: '5-20.99%',
   },
   medium: {
     label: 'متوسط',
@@ -31,10 +43,11 @@ export const RISK = {
     text: 'text-amber-600',
     dot: '#f59e0b',
     severity: 'Medium',
+    range: '21-79.99%',
   },
   high: {
     label: 'مرتفع',
-    cyberLabel: 'High Risk',
+    cyberLabel: 'High',
     threatLevel: 'ORANGE',
     badge: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200',
     solid: 'bg-orange-500 text-white',
@@ -42,10 +55,11 @@ export const RISK = {
     text: 'text-orange-600',
     dot: '#f97316',
     severity: 'High',
+    range: '80-95.99%',
   },
   critical: {
-    label: 'حرج',
-    cyberLabel: 'Critical',
+    label: 'مرتفع جداً',
+    cyberLabel: 'Very High',
     threatLevel: 'RED',
     badge: 'bg-red-50 text-red-700 ring-1 ring-red-200',
     solid: 'bg-red-500 text-white',
@@ -53,6 +67,7 @@ export const RISK = {
     text: 'text-red-600',
     dot: '#ef4444',
     severity: 'Critical',
+    range: '96-100%',
   },
 }
 

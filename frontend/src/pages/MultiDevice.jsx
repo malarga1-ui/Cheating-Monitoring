@@ -18,7 +18,7 @@ function RiskRing({ score, size = 64 }) {
  const t = setTimeout(() => setOff(C - (s / 100) * C), 300)
  return () => clearTimeout(t)
  }, [s, C])
- const meta = riskMeta(s >= 80 ? 'critical' : s >= 60 ? 'high' : s >= 40 ? 'medium' : s >= 20 ? 'low' : 'safe')
+ const meta = riskMeta(s >= 96 ? 'critical' : s >= 80 ? 'high' : s >= 21 ? 'medium' : s >= 5 ? 'low' : 'safe')
  return (
  <div className="relative"style={{ width: size, height: size }}>
  <svg viewBox={`0 0 ${size} ${size}`} className="h-full w-full -rotate-90">

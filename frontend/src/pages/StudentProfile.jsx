@@ -18,7 +18,7 @@ function RiskRing({ score }) {
   const t = setTimeout(() => setOff(C - (s / 100) * C), 250)
   return () => clearTimeout(t)
  }, [s, C])
- const meta = riskMeta(s >= 80 ? 'critical' : s >= 60 ? 'high' : s >= 40 ? 'medium' : s >= 20 ? 'low' : 'safe')
+ const meta = riskMeta(s >= 96 ? 'critical' : s >= 80 ? 'high' : s >= 21 ? 'medium' : s >= 5 ? 'low' : 'safe')
  return (
   <div className="relative h-24 w-24">
    <div

@@ -392,10 +392,11 @@ function StudentsList() {
         <div className="flex items-center gap-2">
           <select value={risk} onChange={e => setRisk(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 outline-none">
             <option value="all">الكل</option>
-            <option value="critical">حرج</option>
-            <option value="high">عالي</option>
+            <option value="critical">مرتفع جداً</option>
+            <option value="high">مرتفع</option>
             <option value="medium">متوسط</option>
-            <option value="safe">آمن</option>
+            <option value="low">منخفض</option>
+            <option value="safe">منخفض جداً</option>
           </select>
           <select value={sort} onChange={e => setSort(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 outline-none">
             <option value="risk_desc">خطورة ↓</option>

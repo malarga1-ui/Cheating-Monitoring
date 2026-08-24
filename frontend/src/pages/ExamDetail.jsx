@@ -457,7 +457,7 @@ export default function ExamDetail() {
  <p className="text-[11px] text-slate-400">{group.student_count} طلاب يشاركون هذا العنوان</p>
  </div>
  </div>
- <RiskScoreBadge score={group.risk_score} level={group.risk_score >= 80 ? 'critical' : group.risk_score >= 60 ? 'high' : group.risk_score >= 40 ? 'medium' : group.risk_score >= 20 ? 'low' : 'safe'} />
+ <RiskScoreBadge score={group.risk_score} level={group.risk_score >= 96 ? 'critical' : group.risk_score >= 80 ? 'high' : group.risk_score >= 21 ? 'medium' : group.risk_score >= 5 ? 'low' : 'safe'} />
  </div>
  <div className="mt-3 flex flex-wrap gap-2">
  {group.students.map((st) => (
@@ -636,11 +636,11 @@ export default function ExamDetail() {
  {[
  { label: 'الطلاب', value: report.summary.total_students, cls: 'text-brand-600' },
  { label: 'الأحداث', value: report.summary.total_events, cls: 'text-cyan-600' },
- { label: 'شديد', value: report.summary.critical, cls: 'text-rose-600' },
- { label: 'عالٍ', value: report.summary.high, cls: 'text-orange-600' },
- { label: 'متوسط', value: report.summary.medium, cls: 'text-amber-600' },
- { label: 'منخفض', value: report.summary.low, cls: 'text-emerald-600' },
- { label: 'آمن', value: report.summary.safe, cls: 'text-slate-500' },
+  { label: 'شديد', value: report.summary.critical, cls: 'text-rose-600' },
+  { label: 'عالٍ', value: report.summary.high, cls: 'text-orange-600' },
+  { label: 'متوسط', value: report.summary.medium, cls: 'text-amber-600' },
+  { label: 'منخفض', value: report.summary.low, cls: 'text-emerald-600' },
+  { label: 'منخفض جداً', value: report.summary.safe, cls: 'text-slate-500' },
  ].map((s) => (
  <div key={s.label} className="rounded-xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200/60">
  <p className="text-[11px] font-semibold text-slate-400">{s.label}</p>

@@ -10,11 +10,11 @@ import { fmtNum, fmtTime } from '../lib/format'
 
 const RISK_LEVELS = [
  { key: 'all', label: 'الكل' },
- { key: 'critical', label: 'حرج' },
- { key: 'high', label: 'عالي' },
+ { key: 'critical', label: 'مرتفع جداً' },
+ { key: 'high', label: 'مرتفع' },
  { key: 'medium', label: 'متوسط' },
  { key: 'low', label: 'منخفض' },
- { key: 'safe', label: 'آمن' },
+ { key: 'safe', label: 'منخفض جداً' },
 ]
 
 function riskGlow(level) {
