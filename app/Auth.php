@@ -371,12 +371,22 @@ final class Auth
         if ((int)($exam['account_id'] ?? 0) !== $accountId) {
             return false;
         }
-        $count = (int)Database::scalar(
-            'SELECT COUNT(*) FROM course_teachers
-              WHERE account_id = ? AND moodle_teacher_id = ? AND moodle_course_id = ?',
-            [$accountId, $teacherId, (int)$exam['moodle_course_id']]
-        );
-        return $count > 0;
+        $mCourseId = (int)($exam['moodle_course_id'] ?? 0);
+        if ($mCourseId > 0) {
+            $count = (int)Database::scalar(
+                'SELECT COUNT(*) FROM course_teachers
+                  WHERE account_id = ? AND moodle_teacher_id = ? AND moodle_course_id = ?',
+                [$accountId, $teacherId, $mCourseId]
+            );
+            if ($count > 0) {
+                return true;
+            }
+        }
+        // Fallback: check if teacher is listed on exam directly
+        if ((int)($exam['moodle_teacher_id'] ?? 0) === $teacherId) {
+            return true;
+        }
+        return false;
     }
 
     /**

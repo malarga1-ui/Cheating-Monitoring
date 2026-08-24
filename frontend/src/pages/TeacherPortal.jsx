@@ -101,7 +101,8 @@ function Header() {
   async function handleSync() {
     setSyncing(true)
     try {
-      await api.post('/api/sync/trigger')
+      await api.post('/api/sync/trigger').catch(() => {})
+      await api.post('/api/teacher/sync-from-events').catch(() => {})
       window.location.reload()
     } catch {
       // ignore

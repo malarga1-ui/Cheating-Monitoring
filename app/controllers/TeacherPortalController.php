@@ -217,6 +217,9 @@ final class TeacherPortalController
         $accountId = Auth::accountId();
         $teacherId = Auth::teacherId();
 
+        // Incrementally aggregate any pending events
+        try { Aggregator::process(500); } catch (\Throwable $e) {}
+
         $exam = self::ownedExam($id, $accountId, $teacherId);
         $quizId = (int)$exam['moodle_quiz_id'];
 
@@ -294,6 +297,9 @@ final class TeacherPortalController
         Auth::requireTeacher();
         $accountId = Auth::accountId();
         $teacherId = Auth::teacherId();
+
+        // Incrementally aggregate any pending events
+        try { Aggregator::process(500); } catch (\Throwable $e) {}
 
         self::ownedExam($id, $accountId, $teacherId);
 
@@ -1270,24 +1276,31 @@ final class TeacherPortalController
     /* ── Course Detail with exams ─────────────────────────────────── */
 
     /** GET /api/teacher/courses/{id} — course detail with its exams. */
-    public static function courseDetail(int $courseMoodleId): void
+    public static function courseDetail(int $courseIdParam): void
     {
         Auth::requireTeacher();
         $accountId = Auth::accountId();
         $teacherId = Auth::teacherId();
 
-        $ids = Teachers::courseIds($accountId, $teacherId);
-        if (!in_array($courseMoodleId, $ids)) {
+        // Incrementally aggregate any pending events
+        try { Aggregator::process(500); } catch (\Throwable $e) {}
+
+        // Find course by moodle_course_id OR internal database id
+        $course = Database::fetchOne(
+            "SELECT c.id, c.moodle_course_id, c.name, c.created_at
+               FROM courses c
+              WHERE c.account_id = ? AND (c.moodle_course_id = ? OR c.id = ?)",
+            [$accountId, $courseIdParam, $courseIdParam]
+        );
+
+        $courseMoodleId = $course ? (int)$course['moodle_course_id'] : $courseIdParam;
+
+        $ids = array_map('intval', Teachers::courseIds($accountId, $teacherId));
+        if (!empty($ids) && !in_array($courseMoodleId, $ids, true)) {
             Response::error('الدورة غير موجودة أو غير مصرح لك بعرضها', 404);
             return;
         }
 
-        $course = Database::fetchOne(
-            "SELECT c.id, c.moodle_course_id, c.name, c.created_at
-               FROM courses c
-              WHERE c.account_id = ? AND c.moodle_course_id = ?",
-            [$accountId, $courseMoodleId]
-        );
         if (!$course) {
             $course = [
                 'id' => $courseMoodleId,
@@ -1308,6 +1321,17 @@ final class TeacherPortalController
               ORDER BY e.last_event_at DESC",
             [$accountId, $courseMoodleId]
         );
+
+        foreach ($exams as &$ex) {
+            if ((int)$ex['students_count'] === 0 && (int)$ex['events_count'] > 0) {
+                $evCount = (int)Database::scalar(
+                    'SELECT COUNT(DISTINCT moodle_user_id) FROM events WHERE moodle_quiz_id = ? AND account_id = ?',
+                    [(int)$ex['moodle_quiz_id'], $accountId]
+                );
+                $ex['students_count'] = $evCount;
+            }
+        }
+        unset($ex);
 
         $coTeachers = Database::fetchAll(
             "SELECT t.moodle_teacher_id AS teacher_id, t.fullname, t.username
@@ -1402,7 +1426,7 @@ final class TeacherPortalController
 
         // Get all sessions for this student in this exam
         $sessions = Database::fetchAll(
-            'SELECT ss.session_id, ss.first_event_at, ss.last_event_at, ss.event_count,
+            'SELECT ss.session_id, ss.first_event_at AS started_at, ss.first_event_at, ss.last_event_at, ss.event_count,
                     ss.risk_score, ss.risk_level, ss.ai_suspect_score,
                     ss.tab_hidden_count, ss.paste_count, ss.copy_count
              FROM session_summaries ss
