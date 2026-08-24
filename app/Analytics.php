@@ -8,17 +8,19 @@ final class Analytics
      * Per-student aggregated counters for an exam, with risk computed from
      * summed signals (accurate, not a per-session max).
      */
-    public static function examStudents(int $examId): array
+    public static function examStudents(int $examId, int $explicitAccountId = 0): array
     {
         $exam = Database::fetchOne(
-            'SELECT id, moodle_quiz_id, question_count, duration_minutes, account_id FROM exams WHERE id = ? OR moodle_quiz_id = ?',
-            [$examId, $examId]
+            'SELECT id, moodle_quiz_id, question_count, duration_minutes, account_id FROM exams
+              WHERE (id = ? OR moodle_quiz_id = ?) AND (account_id = ? OR ? = 0 OR account_id = 0)
+              ORDER BY (account_id = ?) DESC LIMIT 1',
+            [$examId, $examId, $explicitAccountId, $explicitAccountId, $explicitAccountId]
         );
         $internalExamId = $exam ? (int)$exam['id'] : $examId;
         $mQuizId = $exam ? (int)$exam['moodle_quiz_id'] : $examId;
         $questionCount = (int)($exam['question_count'] ?? 0);
         $examMinutes   = (int)($exam['duration_minutes'] ?? 0);
-        $accountId     = (int)($exam['account_id'] ?? 0);
+        $accountId     = $explicitAccountId > 0 ? $explicitAccountId : (int)($exam['account_id'] ?? 0);
 
         $whereExtra = $accountId > 0 ? ' AND (ss.account_id = ? OR ss.account_id = 0)' : '';
         $sqlParams = [$internalExamId, $mQuizId];
@@ -142,9 +144,10 @@ final class Analytics
             }
         } else {
             // Fallback: query raw events if session_summaries is empty
-            if ($mQuizId > 0) {
+            if ($mQuizId > 0 || $internalExamId > 0) {
                 $evWhereAccount = ($accountId > 0) ? ' AND (e.account_id = ? OR e.account_id = 0)' : '';
                 $evParams = [$mQuizId, $internalExamId];
+                if ($accountId > 0) { $evParams[] = $accountId; }
                 if ($accountId > 0) { $evParams[] = $accountId; }
 
                 $evRows = Database::fetchAll(
@@ -162,6 +165,8 @@ final class Analytics
                        FROM events e
                        LEFT JOIN students st ON (st.moodle_user_id = e.moodle_user_id AND (st.account_id = e.account_id OR st.account_id = 0))
                       WHERE (e.moodle_quiz_id = ? OR e.moodle_quiz_id = ?)" . $evWhereAccount . "
+                        AND e.moodle_user_id > 0
+                        AND e.moodle_user_id NOT IN (SELECT moodle_teacher_id FROM teachers WHERE (account_id = ? OR account_id = 0))
                       GROUP BY e.moodle_user_id",
                     $evParams
                 );

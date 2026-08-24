@@ -212,6 +212,22 @@ if ($t1Login['status'] === 200) {
 
     $t1Exams = $t1->request('GET', '/api/teacher/exams');
     testAssert("Teacher 1 Exams List (200)", $t1Exams['status'] === 200);
+    $exList = $t1Exams['data']['data'] ?? $t1Exams['data'] ?? [];
+    echo "  [DEBUG] Teacher 1 Exams Count: " . count($exList) . "\n";
+    foreach ($exList as $exItem) {
+        $eid = (int)$exItem['id'];
+        $qid = (int)$exItem['moodle_quiz_id'];
+        echo "  --> Testing Exam id=$eid, quiz=$qid: {$exItem['name']}\n";
+        $detail = $t1->request('GET', "/api/teacher/exams/$eid");
+        testAssert("Teacher 1 Exam Detail ($eid)", $detail['status'] === 200, "HTTP {$detail['status']}");
+        $studs = $t1->request('GET', "/api/teacher/exams/$eid/students");
+        testAssert("Teacher 1 Exam Students ($eid)", $studs['status'] === 200, "HTTP {$studs['status']}");
+        $sArray = $studs['data']['data']['students'] ?? $studs['data']['students'] ?? [];
+        echo "      Students returned in array: " . count($sArray) . "\n";
+        if (!empty($sArray)) {
+            echo "      First student: " . json_encode($sArray[0], JSON_UNESCAPED_UNICODE) . "\n";
+        }
+    }
 
     $t1Students = $t1->request('GET', '/api/teacher/students');
     testAssert("Teacher 1 Students List (200)", $t1Students['status'] === 200);

@@ -308,7 +308,7 @@ final class TeacherPortalController
 
         self::ownedExam($id, $accountId, $teacherId);
 
-        $students = Analytics::examStudents($id);
+        $students = Analytics::examStudents($id, $accountId);
 
         $risk = (string)($_GET['risk'] ?? '');
         $search = trim((string)($_GET['q'] ?? ''));

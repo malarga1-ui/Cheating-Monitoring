@@ -169,7 +169,7 @@ final class ExamController
         }
         Auth::requireRowAccess($exam);
 
-        $students = Analytics::examStudents($id);
+        $students = Analytics::examStudents($id, (int)$exam['account_id']);
 
         // In-memory filter / sort (fine for up to a few thousand students).
         $risk = (string)($_GET['risk'] ?? '');

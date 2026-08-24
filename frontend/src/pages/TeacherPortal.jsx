@@ -426,7 +426,10 @@ function ExamDetail() {
 
   useEffect(() => {
     api.get(`/api/teacher/exams/${id}`).then(setData).catch(() => {})
-    api.get(`/api/teacher/exams/${id}/students`).then(r => setStudents(r?.students || [])).catch(() => setStudents([]))
+    api.get(`/api/teacher/exams/${id}/students`).then(r => {
+      const list = Array.isArray(r?.students) ? r.students : Array.isArray(r) ? r : []
+      setStudents(list)
+    }).catch(() => setStudents([]))
   }, [id])
 
   async function handleAction(type, params) {
