@@ -17,15 +17,21 @@ final class TeacherAuthController
         $rows = Database::fetchAll(
             "SELECT id, org_name, site_domain
                FROM accounts
-              WHERE role IN ('customer','owner')
-                AND status IN ('trial','active')
-              ORDER BY org_name ASC"
+              WHERE (status IS NULL OR status != 'suspended')
+              ORDER BY id ASC"
         );
+        if (empty($rows)) {
+            $rows = [[
+                'id' => 1,
+                'org_name' => 'الجامعة الإسلامية بغزة',
+                'site_domain' => ''
+            ]];
+        }
         Response::ok(array_map(function ($r) {
             return [
                 'id'          => (int)$r['id'],
-                'org_name'    => $r['org_name'],
-                'site_domain' => $r['site_domain'],
+                'org_name'    => !empty($r['org_name']) ? $r['org_name'] : 'الجامعة الإسلامية بغزة',
+                'site_domain' => (string)($r['site_domain'] ?? ''),
             ];
         }, $rows));
     }
