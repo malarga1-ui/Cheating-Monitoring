@@ -49,8 +49,17 @@ final class SyncController
             case 'user_created':
                 self::userCreated($data, (int)$account['id']);
                 break;
+            case 'user_enrolment_deleted':
+                self::userEnrolmentDeleted($data, (int)$account['id']);
+                break;
+            case 'user_deleted':
+                self::userDeleted($data, (int)$account['id']);
+                break;
             case 'role_assigned':
                 self::roleAssigned($data, (int)$account['id']);
+                break;
+            case 'role_unassigned':
+                self::roleUnassigned($data, (int)$account['id']);
                 break;
             default:
                 Response::error('نوع حدث غير معروف', 422);
@@ -210,6 +219,16 @@ final class SyncController
             );
             $synced['student_enrollments']++;
         }
+
+        // Clean up students who are no longer enrolled in any course and have no exam session records
+        Database::execute(
+            'DELETE FROM students 
+              WHERE account_id = ? 
+                AND moodle_user_id NOT IN (SELECT DISTINCT student_id FROM course_students WHERE account_id = ?)
+                AND id NOT IN (SELECT DISTINCT student_id FROM course_students WHERE account_id = ?)
+                AND id NOT IN (SELECT DISTINCT student_id FROM session_summaries WHERE account_id = ?)',
+            [$accountId, $accountId, $accountId, $accountId]
+        );
 
         Response::ok(['ok' => true, 'synced' => $synced]);
     }
@@ -417,6 +436,60 @@ final class SyncController
                     teacher_name = IF(teacher_name = "", ?, teacher_name)
               WHERE account_id = ? AND moodle_course_id = ? AND teacher_name = ""',
             [$userId, $fullname, $accountId, $courseId]
+        );
+    }
+
+    private static function userEnrolmentDeleted(array $d, int $accountId): void
+    {
+        $userId = (int)($d['userid'] ?? 0);
+        $courseId = (int)($d['courseid'] ?? 0);
+        if ($userId <= 0 || $courseId <= 0) {
+            return;
+        }
+
+        Database::execute(
+            'DELETE FROM course_students 
+              WHERE account_id = ? 
+                AND moodle_course_id = ? 
+                AND (student_id = ? OR student_id = (SELECT moodle_user_id FROM students WHERE id = ? AND account_id = ? LIMIT 1))',
+            [$accountId, $courseId, $userId, $userId, $accountId]
+        );
+    }
+
+    private static function userDeleted(array $d, int $accountId): void
+    {
+        $userId = (int)($d['id'] ?? $d['userid'] ?? 0);
+        if ($userId <= 0) {
+            return;
+        }
+
+        Database::execute(
+            'DELETE FROM course_students WHERE account_id = ? AND student_id = ?',
+            [$accountId, $userId]
+        );
+
+        Database::execute(
+            'DELETE FROM students WHERE account_id = ? AND (moodle_user_id = ? OR id = ?)',
+            [$accountId, $userId, $userId]
+        );
+
+        Database::execute(
+            'DELETE FROM teachers WHERE account_id = ? AND moodle_teacher_id = ?',
+            [$accountId, $userId]
+        );
+    }
+
+    private static function roleUnassigned(array $d, int $accountId): void
+    {
+        $userId = (int)($d['userid'] ?? 0);
+        $courseId = (int)($d['courseid'] ?? 0);
+        if ($userId <= 0 || $courseId <= 0) {
+            return;
+        }
+
+        Database::execute(
+            'DELETE FROM course_teachers WHERE account_id = ? AND moodle_teacher_id = ? AND moodle_course_id = ?',
+            [$accountId, $userId, $courseId]
         );
     }
 

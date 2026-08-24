@@ -37,9 +37,8 @@ final class TeacherPortalController
                     AND (
                       s.moodle_user_id IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = ? AND cs.moodle_course_id IN ($in))
                       OR s.id IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = ? AND cs.moodle_course_id IN ($in))
-                      OR s.id IN (SELECT ss.student_id FROM session_summaries ss JOIN exams e2 ON e2.id = ss.exam_id WHERE e2.account_id = ? AND e2.moodle_course_id IN ($in))
-                      OR s.moodle_user_id IN (SELECT ev.moodle_user_id FROM events ev WHERE ev.account_id = ? AND ev.moodle_course_id IN ($in))
                     )
+                    AND s.username NOT IN (SELECT username FROM teachers WHERE account_id = ? AND username != '')
                 ) AS students_count,
                 (SELECT COUNT(DISTINCT ss.session_id)
                    FROM session_summaries ss
@@ -50,7 +49,7 @@ final class TeacherPortalController
                    JOIN exams e4 ON e4.id = ss.exam_id 
                   WHERE e4.account_id = ? AND e4.moodle_course_id IN ($in)
                     AND ss.risk_level IN ('high','critical')) AS suspicious_count",
-            [$accountId, $accountId, $accountId, $accountId, $accountId, $accountId, $accountId, $accountId, $accountId, $accountId]
+            [$accountId, $accountId, $accountId, $accountId, $accountId, $accountId, $accountId, $accountId, $accountId]
         );
 
         Response::ok([
@@ -86,9 +85,8 @@ final class TeacherPortalController
                         AND (
                           s.moodle_user_id IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = c.account_id AND cs.moodle_course_id = c.moodle_course_id)
                           OR s.id IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = c.account_id AND cs.moodle_course_id = c.moodle_course_id)
-                          OR s.id IN (SELECT ss.student_id FROM session_summaries ss JOIN exams e2 ON e2.id = ss.exam_id WHERE e2.account_id = c.account_id AND e2.moodle_course_id = c.moodle_course_id)
-                          OR s.moodle_user_id IN (SELECT ev.moodle_user_id FROM events ev WHERE ev.account_id = c.account_id AND ev.moodle_course_id = c.moodle_course_id)
                         )
+                        AND s.username NOT IN (SELECT username FROM teachers WHERE account_id = c.account_id AND username != '')
                     ) AS students_count
                FROM courses c
               WHERE c.account_id = ? AND c.moodle_course_id IN ($in)
@@ -1035,12 +1033,10 @@ final class TeacherPortalController
                 AND (
                   s.moodle_user_id IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = ? AND cs.moodle_course_id IN ($in))
                   OR s.id IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = ? AND cs.moodle_course_id IN ($in))
-                  OR s.id IN (SELECT ss2.student_id FROM session_summaries ss2 JOIN exams e ON e.id = ss2.exam_id WHERE e.account_id = ? AND e.moodle_course_id IN ($in))
-                  OR s.moodle_user_id IN (SELECT ev.moodle_user_id FROM events ev WHERE ev.account_id = ? AND ev.moodle_course_id IN ($in))
                 )
                 AND s.username NOT IN (SELECT username FROM teachers WHERE account_id = ? AND username != '')
               GROUP BY s.id, s.moodle_user_id, s.fullname, s.username",
-            [$accountId, $accountId, $accountId, $accountId, $accountId, $accountId, $accountId]
+            [$accountId, $accountId, $accountId, $accountId, $accountId]
         );
 
         if ($search !== '') {
@@ -1081,11 +1077,9 @@ final class TeacherPortalController
                 AND (
                   s.moodle_user_id IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = ? AND cs.moodle_course_id IN ($in))
                   OR s.id IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = ? AND cs.moodle_course_id IN ($in))
-                  OR s.id IN (SELECT ss2.student_id FROM session_summaries ss2 JOIN exams e ON e.id = ss2.exam_id WHERE e.account_id = ? AND e.moodle_course_id IN ($in))
-                  OR s.moodle_user_id IN (SELECT ev.moodle_user_id FROM events ev WHERE ev.account_id = ? AND ev.moodle_course_id IN ($in))
                 )
                 AND s.username NOT IN (SELECT username FROM teachers WHERE account_id = ? AND username != '')",
-            [$accountId, $accountId, $accountId, $accountId, $accountId, $accountId, $accountId]
+            [$accountId, $accountId, $accountId, $accountId, $accountId]
         );
 
         Response::ok([
@@ -1333,10 +1327,9 @@ final class TeacherPortalController
                 AND (
                   s.moodle_user_id IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = ? AND cs.moodle_course_id = ?)
                   OR s.id IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = ? AND cs.moodle_course_id = ?)
-                  OR s.id IN (SELECT ss.student_id FROM session_summaries ss JOIN exams e ON e.id = ss.exam_id WHERE e.account_id = ? AND e.moodle_course_id = ?)
-                  OR s.moodle_user_id IN (SELECT ev.moodle_user_id FROM events ev WHERE ev.account_id = ? AND ev.moodle_course_id = ?)
-                )",
-            [$courseMoodleId, $courseMoodleId, $courseMoodleId, $accountId, $accountId, $courseMoodleId, $accountId, $courseMoodleId, $accountId, $courseMoodleId, $accountId, $courseMoodleId]
+                )
+                AND s.username NOT IN (SELECT username FROM teachers WHERE account_id = ? AND username != '')",
+            [$courseMoodleId, $courseMoodleId, $courseMoodleId, $accountId, $accountId, $courseMoodleId, $accountId, $courseMoodleId, $accountId]
         );
 
         usort($students, function ($a, $b) {
