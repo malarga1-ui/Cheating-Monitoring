@@ -581,6 +581,7 @@ function CourseDetail() {
 function StudentDetail() {
   const { id } = useParams()
   const [data, setData] = useState(null)
+  const navigate = useNavigate()
 
   useEffect(() => {
     api.get(`/api/teacher/students/${id}`).then(setData).catch(() => {})
@@ -595,10 +596,27 @@ function StudentDetail() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <Link to="/teacher/portal/students" className="text-xs font-extrabold text-slate-400 hover:text-slate-600">← العودة للطلاب</Link>
-        <h2 className="mt-1 text-xl font-extrabold text-slate-800">{s.fullname}</h2>
-        <p className="text-xs text-slate-400">{s.username} · #{s.moodle_user_id}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <Link to="/teacher/portal/students" className="text-xs font-extrabold text-slate-400 hover:text-slate-600">← العودة للطلاب</Link>
+          <h2 className="mt-1 text-xl font-extrabold text-slate-800">{s.fullname}</h2>
+          <p className="text-xs text-slate-400">{s.username} · #{s.moodle_user_id}</p>
+        </div>
+        <button
+          onClick={async () => {
+            if (window.confirm(`هل أنت متأكد من حذف بيانات الطالب "${s.fullname}" نهائياً من لوحة التحكم؟`)) {
+              try {
+                await api.post(`/api/teacher/students/${id}/delete`, {})
+                navigate('/teacher/portal/students')
+              } catch (e) {
+                alert('تعذر حذف بيانات الطالب')
+              }
+            }
+          }}
+          className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-extrabold text-rose-700 hover:bg-rose-100 transition-colors"
+        >
+          🗑️ حذف بيانات الطالب من المنصة
+        </button>
       </div>
 
       {/* المحددات الأربعة (The 4 Pillars) */}

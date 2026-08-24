@@ -269,7 +269,7 @@ final class TeacherPortalController
         );
 
         $course = Database::fetchOne(
-            'SELECT id, name, moodle_course_id FROM courses WHERE moodle_course_id = ? AND account_id = ?',
+            'SELECT id, name, moodle_course_id FROM courses WHERE moodle_course_id = ? AND (account_id = ? OR account_id = 0)',
             [(int)$exam['moodle_course_id'], $accountId]
         );
 
@@ -279,12 +279,16 @@ final class TeacherPortalController
                 'id' => (int)$course['id'],
                 'name' => $course['name'],
                 'moodle_course_id' => (int)$course['moodle_course_id'],
-            ] : null,
+            ] : [
+                'id' => (int)$exam['moodle_course_id'],
+                'name' => 'مساق #' . $exam['moodle_course_id'],
+                'moodle_course_id' => (int)$exam['moodle_course_id'],
+            ],
             'counts' => [
                 'students' => $studentsCount,
                 'sessions' => $sessionsCount,
                 'events' => $eventsCount,
-                'suspicious' => (int)$counts['suspicious_count'],
+                'suspicious' => (int)($counts['suspicious_count'] ?? 0),
             ],
             'risk_distribution' => $riskDist,
             'events_over_time' => array_map(fn($r) => ['time' => $r['bucket'], 'events' => (int)$r['cnt']], $overTime),
@@ -1343,19 +1347,38 @@ final class TeacherPortalController
         );
 
         $students = Database::fetchAll(
-            "SELECT s.id AS student_id, s.moodle_user_id, s.fullname, s.username,
-                    (SELECT COUNT(DISTINCT ss.exam_id) FROM session_summaries ss JOIN exams e ON e.id = ss.exam_id WHERE ss.student_id = s.id AND e.moodle_course_id = ? AND ss.account_id = s.account_id) AS exams_count,
-                    (SELECT MAX(ss.risk_score) FROM session_summaries ss JOIN exams e ON e.id = ss.exam_id WHERE ss.student_id = s.id AND e.moodle_course_id = ? AND ss.account_id = s.account_id) AS risk_score,
-                    (SELECT ss.risk_level FROM session_summaries ss JOIN exams e ON e.id = ss.exam_id WHERE ss.student_id = s.id AND e.moodle_course_id = ? AND ss.account_id = s.account_id ORDER BY ss.risk_score DESC LIMIT 1) AS risk_level
-               FROM students s
-              WHERE s.account_id = ?
-                AND (
-                  s.moodle_user_id IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = ? AND cs.moodle_course_id = ?)
-                  OR s.id IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = ? AND cs.moodle_course_id = ?)
-                )
-                AND s.username NOT IN (SELECT username FROM teachers WHERE account_id = ? AND username != '')",
-            [$courseMoodleId, $courseMoodleId, $courseMoodleId, $accountId, $accountId, $courseMoodleId, $accountId, $courseMoodleId, $accountId]
+            "SELECT DISTINCT s.id AS student_id, s.moodle_user_id, s.fullname, s.username,
+                    COUNT(DISTINCT ss.exam_id) AS exams_count,
+                    MAX(ss.risk_score) AS risk_score,
+                    MAX(ss.risk_level) AS risk_level
+               FROM session_summaries ss
+               JOIN exams e ON (e.id = ss.exam_id OR e.moodle_quiz_id = ss.exam_id)
+               JOIN students s ON (s.id = ss.student_id OR s.moodle_user_id = ss.student_id)
+              WHERE (ss.account_id = ? OR ss.account_id = 0)
+                AND e.moodle_course_id = ?
+                AND s.username NOT IN (SELECT username FROM teachers WHERE (account_id = ? OR account_id = 0) AND username != '')
+              GROUP BY s.id, s.moodle_user_id, s.fullname, s.username",
+            [$accountId, $courseMoodleId, $accountId]
         );
+
+        if (empty($students)) {
+            $students = Database::fetchAll(
+                "SELECT DISTINCT e.moodle_user_id AS student_id,
+                        e.moodle_user_id,
+                        COALESCE(MAX(st.fullname), MAX(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.student.fullname'))), CONCAT('طالب #', e.moodle_user_id)) AS fullname,
+                        COALESCE(MAX(st.username), MAX(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.student.username'))), '') AS username,
+                        COUNT(DISTINCT e.moodle_quiz_id) AS exams_count,
+                        0 AS risk_score,
+                        'safe' AS risk_level
+                   FROM events e
+                   LEFT JOIN students st ON (st.moodle_user_id = e.moodle_user_id AND (st.account_id = e.account_id OR st.account_id = 0))
+                  WHERE (e.account_id = ? OR e.account_id = 0)
+                    AND e.moodle_course_id = ?
+                    AND e.moodle_user_id NOT IN (SELECT moodle_teacher_id FROM teachers WHERE (account_id = ? OR account_id = 0))
+                  GROUP BY e.moodle_user_id",
+                [$accountId, $courseMoodleId, $accountId]
+            );
+        }
 
         usort($students, function ($a, $b) {
             $aTook = ((int)$a['exams_count'] > 0) ? 1 : 0;
@@ -1630,5 +1653,26 @@ final class TeacherPortalController
             'course_ids' => array_map(fn($p) => (int)$p['moodle_course_id'], $pairs),
             'events_aggregated' => $aggResult['processed'] ?? 0,
         ]);
+    }
+
+    /** DELETE /api/teacher/students/{id} - Remove student data if deleted/unenrolled */
+    public static function deleteStudent(int $id): void
+    {
+        Auth::requireTeacher();
+        $accountId = Auth::accountId();
+        $student = Database::fetchOne('SELECT * FROM students WHERE (id = ? OR moodle_user_id = ?) AND (account_id = ? OR account_id = 0)', [$id, $id, $accountId]);
+        if (!$student) {
+            Response::error('الطالب غير موجود', 404);
+        }
+        $sid = (int)$student['id'];
+        $mid = (int)$student['moodle_user_id'];
+        Database::transaction(function() use ($sid, $mid, $accountId) {
+            Database::execute('DELETE FROM session_summaries WHERE (student_id = ? OR student_id = ?) AND (account_id = ? OR account_id = 0)', [$sid, $mid, $accountId]);
+            Database::execute('DELETE FROM sessions WHERE (student_id = ? OR student_id = ?) AND (account_id = ? OR account_id = 0)', [$sid, $mid, $accountId]);
+            Database::execute('DELETE FROM answer_records WHERE (student_id = ? OR student_id = ?) AND (account_id = ? OR account_id = 0)', [$sid, $mid, $accountId]);
+            Database::execute('DELETE FROM events WHERE moodle_user_id = ? AND (account_id = ? OR account_id = 0)', [$mid, $accountId]);
+            Database::execute('DELETE FROM students WHERE id = ? AND (account_id = ? OR account_id = 0)', [$sid, $accountId]);
+        });
+        Response::ok(['message' => 'تم حذف الطالب وبياناته بنجاح']);
     }
 }

@@ -368,14 +368,14 @@ final class Auth
     /** Does the given teacher own this exam (course assignment)? */
     public static function teacherOwnsExam(int $accountId, int $teacherId, array $exam): bool
     {
-        if ((int)($exam['account_id'] ?? 0) !== $accountId) {
+        if ((int)($exam['account_id'] ?? 0) !== $accountId && (int)($exam['account_id'] ?? 0) !== 0) {
             return false;
         }
         $mCourseId = (int)($exam['moodle_course_id'] ?? 0);
         if ($mCourseId > 0) {
             $count = (int)Database::scalar(
                 'SELECT COUNT(*) FROM course_teachers
-                  WHERE account_id = ? AND moodle_teacher_id = ? AND moodle_course_id = ?',
+                  WHERE (account_id = ? OR account_id = 0) AND moodle_teacher_id = ? AND moodle_course_id = ?',
                 [$accountId, $teacherId, $mCourseId]
             );
             if ($count > 0) {
@@ -384,6 +384,11 @@ final class Auth
         }
         // Fallback: check if teacher is listed on exam directly
         if ((int)($exam['moodle_teacher_id'] ?? 0) === $teacherId) {
+            return true;
+        }
+        // Fallback: check if teacher courses contains this course
+        $teacherCourseIds = Teachers::courseIds($accountId, $teacherId);
+        if (in_array($mCourseId, $teacherCourseIds, true)) {
             return true;
         }
         return false;

@@ -74,6 +74,8 @@ $router->get('/api/teacher/exams/devices', [TeacherPortalController::class, 'all
 // Students list + detail
 $router->get('/api/teacher/students', [TeacherPortalController::class, 'students']);
 $router->get('/api/teacher/students/{id}', [TeacherPortalController::class, 'studentDetail']);
+$router->post('/api/teacher/students/{id}/delete', [TeacherPortalController::class, 'deleteStudent']);
+$router->delete('/api/teacher/students/{id}', [TeacherPortalController::class, 'deleteStudent']);
 // Single-exam analytics
 $router->get('/api/teacher/exams/{id}', [TeacherPortalController::class, 'examDetail']);
 $router->get('/api/teacher/exams/{id}/students', [TeacherPortalController::class, 'examStudents']);
