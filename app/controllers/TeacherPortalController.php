@@ -1496,30 +1496,39 @@ final class TeacherPortalController
             [$accountId, $teacherId]
         );
 
+        // Check if course_teachers already has explicit assignments for this teacher
+        $existingCtCount = (int)Database::fetchColumn(
+            'SELECT COUNT(*) FROM course_teachers WHERE account_id = ? AND moodle_teacher_id = ?',
+            [$accountId, $teacherId]
+        );
+
         $synced = 0;
-        foreach ($pairs as $p) {
-            $courseId = (int)$p['moodle_course_id'];
-            $tname = em_truncate((string)($p['tname'] ?? ''), 255);
-            if ($courseId <= 0) continue;
+        // Only fallback to event payloads if no course_teachers links exist yet
+        if ($existingCtCount === 0) {
+            foreach ($pairs as $p) {
+                $courseId = (int)$p['moodle_course_id'];
+                $tname = em_truncate((string)($p['tname'] ?? ''), 255);
+                if ($courseId <= 0) continue;
 
-            // Ensure course exists.
-            Database::execute(
-                'INSERT INTO courses (account_id, moodle_course_id, name)
-                 VALUES (?, ?, ?)
-                 ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)',
-                [$accountId, $courseId, $tname !== '' ? $tname : 'Course ' . $courseId]
-            );
+                // Ensure course exists.
+                Database::execute(
+                    'INSERT INTO courses (account_id, moodle_course_id, name)
+                     VALUES (?, ?, ?)
+                     ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)',
+                    [$accountId, $courseId, $tname !== '' ? $tname : 'Course ' . $courseId]
+                );
 
-            // Ensure course_teachers link exists.
-            Database::execute(
-                'INSERT INTO course_teachers (moodle_course_id, moodle_teacher_id, account_id, teacher_name)
-                 VALUES (?, ?, ?, ?)
-                 ON DUPLICATE KEY UPDATE
-                   account_id = IF(account_id = 0, VALUES(account_id), account_id),
-                   teacher_name = IF(teacher_name = "", VALUES(teacher_name), teacher_name)',
-                [$courseId, $teacherId, $accountId, $tname]
-            );
-            $synced++;
+                // Ensure course_teachers link exists.
+                Database::execute(
+                    'INSERT INTO course_teachers (moodle_course_id, moodle_teacher_id, account_id, teacher_name)
+                     VALUES (?, ?, ?, ?)
+                     ON DUPLICATE KEY UPDATE
+                       account_id = IF(account_id = 0, VALUES(account_id), account_id),
+                       teacher_name = IF(teacher_name = "", VALUES(teacher_name), teacher_name)',
+                    [$courseId, $teacherId, $accountId, $tname]
+                );
+                $synced++;
+            }
         }
 
         // Also sync teachers record itself.

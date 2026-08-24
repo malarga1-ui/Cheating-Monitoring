@@ -170,6 +170,9 @@ final class SyncController
 
         // 5. Teacher <-> Course assignments
         $enrollments = $body['enrollments'] ?? [];
+        if (!empty($enrollments)) {
+            Database::execute('DELETE FROM course_teachers WHERE account_id = ?', [$accountId]);
+        }
         foreach ($enrollments as $e) {
             $cid = (int)($e['course_id'] ?? 0);
             $tid = (int)($e['teacher_id'] ?? 0);
@@ -188,6 +191,9 @@ final class SyncController
 
         // 6. Student <-> Course assignments
         $student_enrollments = $body['student_enrollments'] ?? [];
+        if (!empty($student_enrollments)) {
+            Database::execute('DELETE FROM course_students WHERE account_id = ?', [$accountId]);
+        }
         $synced['student_enrollments'] = 0;
         foreach ($student_enrollments as $se) {
             $cid = (int)($se['course_id'] ?? 0);
