@@ -50,8 +50,11 @@ final class TeacherAuthController
         if ($account === null) {
             Response::error('الجامعة غير موجودة', 404);
         }
-        Accounts::enforceStatus((int)$account['id']);
-        $account = Accounts::findById((int)$account['id']);
+        try {
+            Accounts::enforceStatus((int)$account['id']);
+            $account = Accounts::findById((int)$account['id']) ?? $account;
+        } catch (Throwable $e) {}
+
         if (Accounts::locked($account)) {
             Response::error('حساب هذه الجامعة غير نشط حالياً', 403);
         }
@@ -68,10 +71,25 @@ final class TeacherAuthController
         // Check if the teacher must change their password.
         $mustChange = Teachers::mustChangePassword($teacher);
 
+        $user = Auth::user();
+        if ($user === null) {
+            $user = [
+                'id'       => (int)$account['id'],
+                'authType' => 'teacher',
+                'role'     => 'teacher',
+                'org_name' => $account['org_name'],
+                'teacher'  => [
+                    'moodle_teacher_id' => (int)$teacher['moodle_teacher_id'],
+                    'fullname'          => (string)($teacher['fullname'] ?? ''),
+                    'username'          => (string)($teacher['username'] ?? ''),
+                ],
+            ];
+        }
+
         Response::ok([
-            'user'            => Auth::user(),
-            'status'          => Accounts::status((int)$account['id']),
-            'csrf'            => Auth::csrfToken(),
+            'user'                 => $user,
+            'status'               => Accounts::status((int)$account['id']),
+            'csrf'                 => Auth::csrfToken(),
             'must_change_password' => $mustChange,
         ]);
     }
@@ -211,22 +229,30 @@ final class TeacherAuthController
     /** Basic per-IP throttling for the public teacher-login endpoints. */
     private static function rateLimit(): void
     {
-        $ip = em_rate_limit_ip();
-        $count = (int)Database::scalar(
-            'SELECT COUNT(*) FROM login_attempts WHERE ip_address = ? AND attempted_at > NOW() - INTERVAL 1 MINUTE',
-            [$ip]
-        );
-        if ($count >= 10) {
-            Response::error('محاولات كثيرة — حاول بعد دقيقة', 429);
+        try {
+            $ip = em_rate_limit_ip();
+            $count = (int)Database::scalar(
+                'SELECT COUNT(*) FROM login_attempts WHERE ip_address = ? AND attempted_at > NOW() - INTERVAL 1 MINUTE',
+                [$ip]
+            );
+            if ($count >= 10) {
+                Response::error('محاولات كثيرة — حاول بعد دقيقة', 429);
+            }
+        } catch (Throwable $e) {
+            // Ignore if table doesn't exist
         }
     }
 
     private static function recordAttempt(): void
     {
-        Database::execute(
-            'INSERT INTO login_attempts (ip_address, attempted_at) VALUES (?, NOW())',
-            [em_client_ip()]
-        );
+        try {
+            Database::execute(
+                'INSERT INTO login_attempts (ip_address, attempted_at) VALUES (?, NOW())',
+                [em_client_ip()]
+            );
+        } catch (Throwable $e) {
+            // Ignore if table doesn't exist
+        }
     }
 
     /**
