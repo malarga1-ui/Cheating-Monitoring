@@ -220,40 +220,6 @@ final class Analytics
                 }
             }
         }
-                'paste_count' => (int)$r['paste_count'],
-                'right_click_count' => (int)$r['right_click_count'],
-                'blur_count' => (int)$r['blur_count'],
-                'focus_count' => (int)$r['focus_count'],
-                'page_leave_count' => (int)$r['page_leave_count'],
-                'offline_count' => (int)$r['offline_count'],
-                'answer_changed_count' => (int)$r['answer_changed_count'],
-                'devtools_count' => (int)$r['devtools_count'],
-                'suspicious_key_count' => (int)$r['suspicious_key_count'],
-                'screenshot_count' => (int)$r['screenshot_count'],
-                'rapid_answer_changes' => (int)$r['rapid_answer_changes'],
-                'idle_count' => (int)$r['idle_count'],
-                'idle_duration_ms' => (int)$r['idle_duration_ms'],
-                'fullscreen_exit_count' => (int)$r['fullscreen_exit_count'],
-                'typing_keydown_count' => (int)$r['typing_keydown_count'],
-                'typing_backspace_count' => (int)$r['typing_backspace_count'],
-                'typing_enter_count' => (int)$r['typing_enter_count'],
-                'mouse_click_count' => (int)$r['mouse_click_count'],
-                'mouse_move_count' => (int)$r['mouse_move_count'],
-                'mouse_scroll_count' => (int)$r['mouse_scroll_count'],
-                'other_count' => (int)$r['other_count'],
-                'first_event_at' => $r['first_event_at'],
-                'last_event_at' => $r['last_event_at'],
-                'risk_score' => $risk['score'],
-                'risk_level' => $risk['level'],
-                'risk_label' => RiskEngine::labelAr($risk['level']),
-                // v9: network + AI + similarity
-                'ip_addresses' => $r['ip_addresses'] ?? '',
-                'same_ip_student_count' => (int)($r['same_ip_student_count'] ?? 0),
-                'ai_suspect_score' => (int)($r['ai_suspect_score'] ?? 0),
-                'similarity_max_score' => (int)($r['similarity_max_score'] ?? 0),
-                'categories' => $risk['categories'],
-            ];
-        }
         return $students;
     }
 
