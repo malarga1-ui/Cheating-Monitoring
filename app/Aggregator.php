@@ -672,7 +672,7 @@ final class Aggregator
                      :ks_samples)
                 ON DUPLICATE KEY UPDATE
                   first_event_at = VALUES(first_event_at), last_event_at = VALUES(last_event_at),
-                  ip_address = IF(VALUES(ip_address) != '', VALUES(ip_address), ip_address),
+                  ip_address = COALESCE(NULLIF(VALUES(ip_address), ""), ip_address),
                   event_count = VALUES(event_count),
                   tab_hidden_count = VALUES(tab_hidden_count),
                   tab_visible_count = VALUES(tab_visible_count),
