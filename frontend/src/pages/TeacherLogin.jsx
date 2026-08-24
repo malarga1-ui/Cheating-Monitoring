@@ -155,21 +155,12 @@ export default function TeacherLogin() {
             <form onSubmit={submitPasswordChange}>
               <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
                 <p className="text-xs font-semibold text-amber-700">
-                  كلمة المرور الحالية: <span className="font-mono">Teacher@{username ? '' : '...'}</span>
+                  يرجى تعيين كلمة مرور جديدة لحسابك لمتابعة الدخول.
                 </p>
                 <p className="mt-1 text-xs text-amber-600">
-                  استخدم كلمة المرور الافتراضية أعلاه ككلمة مرور حالية، ثم اختر كلمة جديدة
+                  يجب ألا تقل كلمة المرور الجديدة عن 6 أحرف.
                 </p>
               </div>
-
-              <label className="mb-1.5 block text-sm font-bold text-slate-700">كلمة المرور الحالية</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Teacher@..."
-                className={inputCls(!!error)}
-              />
 
               <label className="mb-1.5 block text-sm font-bold text-slate-700">كلمة المرور الجديدة</label>
               <input

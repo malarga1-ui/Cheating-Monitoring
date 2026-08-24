@@ -65,7 +65,11 @@ async function request(path, options = {}) {
   }
 
   if (!res.ok) {
-    if (res.status === 401 && onUnauthorized) {
+    const isAuthRoute = path.startsWith('/api/auth/login') ||
+                        path.startsWith('/api/auth/teacher-login') ||
+                        path.startsWith('/api/auth/staff-login') ||
+                        path === '/api/auth/me'
+    if (res.status === 401 && onUnauthorized && !isAuthRoute) {
       onUnauthorized()
     }
     const message = getErrorMessage(res.status, data, false)

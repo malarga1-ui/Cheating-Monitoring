@@ -38,7 +38,10 @@ export function AuthProvider({ children }) {
       setStatus(null)
       setCsrf(null)
       setCsrfToken(null)
-      window.location.href = '/login'
+      const currentPath = window.location.pathname
+      if (!currentPath.includes('login')) {
+        window.location.href = '/teacher-login'
+      }
     })
   }, [])
 
