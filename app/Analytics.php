@@ -11,21 +11,23 @@ final class Analytics
     public static function examStudents(int $examId): array
     {
         $exam = Database::fetchOne(
-            'SELECT question_count, duration_minutes, account_id FROM exams WHERE id = ?',
-            [$examId]
+            'SELECT id, moodle_quiz_id, question_count, duration_minutes, account_id FROM exams WHERE id = ? OR moodle_quiz_id = ?',
+            [$examId, $examId]
         );
+        $internalExamId = $exam ? (int)$exam['id'] : $examId;
+        $mQuizId = $exam ? (int)$exam['moodle_quiz_id'] : $examId;
         $questionCount = (int)($exam['question_count'] ?? 0);
         $examMinutes   = (int)($exam['duration_minutes'] ?? 0);
         $accountId     = (int)($exam['account_id'] ?? 0);
 
-        $whereExtra = $accountId > 0 ? ' AND ss.account_id = ?' : '';
-        $sqlParams = [$examId];
+        $whereExtra = $accountId > 0 ? ' AND (ss.account_id = ? OR ss.account_id = 0)' : '';
+        $sqlParams = [$internalExamId, $mQuizId];
         if ($accountId > 0) { $sqlParams[] = $accountId; }
 
         $rows = Database::fetchAll(
             'SELECT ss.student_id,
-                    COALESCE(st.fullname, ss.student_name, CONCAT("طالب #", ss.student_id)) AS fullname,
-                    COALESCE(st.username, "") AS username,
+                    COALESCE(MAX(st.fullname), MAX(ss.student_name), CONCAT("طالب #", ss.student_id)) AS fullname,
+                    COALESCE(MAX(st.username), "") AS username,
                     COUNT(DISTINCT ss.session_id) AS sessions_count,
                     SUM(ss.event_count) AS event_count,
                     SUM(ss.tab_hidden_count) AS tab_hidden_count,
@@ -67,8 +69,8 @@ final class Analytics
                     GROUP_CONCAT(DISTINCT ss.ip_address ORDER BY ss.ip_address SEPARATOR ", ") AS ip_addresses
              FROM session_summaries ss
              LEFT JOIN students st ON (st.id = ss.student_id OR st.moodle_user_id = ss.student_id)
-             WHERE ss.exam_id = ?' . $whereExtra . '
-             GROUP BY ss.student_id, fullname, username',
+             WHERE (ss.exam_id = ? OR ss.exam_id = ?)' . $whereExtra . '
+             GROUP BY ss.student_id',
             $sqlParams
         );
 
@@ -140,12 +142,15 @@ final class Analytics
             }
         } else {
             // Fallback: query raw events if session_summaries is empty
-            $mQuizId = (int)Database::scalar('SELECT moodle_quiz_id FROM exams WHERE id = ?', [$examId]);
             if ($mQuizId > 0) {
+                $evWhereAccount = ($accountId > 0) ? ' AND (e.account_id = ? OR e.account_id = 0)' : '';
+                $evParams = [$mQuizId, $internalExamId];
+                if ($accountId > 0) { $evParams[] = $accountId; }
+
                 $evRows = Database::fetchAll(
                     "SELECT e.moodle_user_id AS student_id,
-                            COALESCE(st.fullname, JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.student.fullname')), CONCAT('طالب #', e.moodle_user_id)) AS fullname,
-                            COALESCE(st.username, JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.student.username')), '') AS username,
+                            COALESCE(MAX(st.fullname), MAX(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.student.fullname'))), CONCAT('طالب #', e.moodle_user_id)) AS fullname,
+                            COALESCE(MAX(st.username), MAX(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.student.username'))), '') AS username,
                             COUNT(DISTINCT e.session_id) AS sessions_count,
                             COUNT(*) AS event_count,
                             SUM(CASE WHEN e.event_type = 'tab_hidden' THEN 1 ELSE 0 END) AS tab_hidden_count,
@@ -155,10 +160,10 @@ final class Analytics
                             MIN(e.event_time) AS first_event_at,
                             MAX(e.event_time) AS last_event_at
                        FROM events e
-                       LEFT JOIN students st ON (st.moodle_user_id = e.moodle_user_id AND st.account_id = e.account_id)
-                      WHERE e.moodle_quiz_id = ? AND e.account_id = ?
-                      GROUP BY e.moodle_user_id, fullname, username",
-                    [$mQuizId, $accountId]
+                       LEFT JOIN students st ON (st.moodle_user_id = e.moodle_user_id AND (st.account_id = e.account_id OR st.account_id = 0))
+                      WHERE (e.moodle_quiz_id = ? OR e.moodle_quiz_id = ?)" . $evWhereAccount . "
+                      GROUP BY e.moodle_user_id",
+                    $evParams
                 );
                 foreach ($evRows as $er) {
                     $c = [

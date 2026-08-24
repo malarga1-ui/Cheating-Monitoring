@@ -221,15 +221,16 @@ final class TeacherPortalController
         try { Aggregator::process(500); } catch (\Throwable $e) {}
 
         $exam = self::ownedExam($id, $accountId, $teacherId);
+        $internalExamId = (int)$exam['id'];
         $quizId = (int)$exam['moodle_quiz_id'];
 
         $counts = Database::fetchOne(
             'SELECT
-                (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE ss.exam_id = ? AND ss.account_id = ?) AS students_count,
-                (SELECT COUNT(DISTINCT ss.session_id)  FROM session_summaries ss WHERE ss.exam_id = ? AND ss.account_id = ?) AS sessions_count,
-                (SELECT COUNT(*) FROM events ev WHERE ev.moodle_quiz_id = ? AND ev.account_id = ?) AS events_count,
-                (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE ss.exam_id = ? AND ss.account_id = ? AND ss.risk_level IN ("high","critical")) AS suspicious_count',
-            [$id, $accountId, $id, $accountId, $quizId, $accountId, $id, $accountId]
+                (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = ? OR ss.exam_id = ?) AND (ss.account_id = ? OR ss.account_id = 0)) AS students_count,
+                (SELECT COUNT(DISTINCT ss.session_id)  FROM session_summaries ss WHERE (ss.exam_id = ? OR ss.exam_id = ?) AND (ss.account_id = ? OR ss.account_id = 0)) AS sessions_count,
+                (SELECT COUNT(*) FROM events ev WHERE (ev.moodle_quiz_id = ? OR ev.moodle_quiz_id = ?) AND (ev.account_id = ? OR ev.account_id = 0)) AS events_count,
+                (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = ? OR ss.exam_id = ?) AND (ss.account_id = ? OR ss.account_id = 0) AND ss.risk_level IN ("high","critical")) AS suspicious_count',
+            [$internalExamId, $quizId, $accountId, $internalExamId, $quizId, $accountId, $quizId, $internalExamId, $accountId, $internalExamId, $quizId, $accountId]
         );
         $studentsCount = (int)$counts['students_count'];
         $sessionsCount = (int)$counts['sessions_count'];
@@ -238,8 +239,8 @@ final class TeacherPortalController
         if ($studentsCount === 0 && $eventsCount > 0) {
             $fallback = Database::fetchOne(
                 'SELECT COUNT(DISTINCT ev.moodle_user_id) AS student_count
-                 FROM events ev WHERE ev.moodle_quiz_id = ? AND ev.account_id = ?',
-                [$quizId, $accountId]
+                 FROM events ev WHERE (ev.moodle_quiz_id = ? OR ev.moodle_quiz_id = ?) AND (ev.account_id = ? OR ev.account_id = 0)',
+                [$quizId, $internalExamId, $accountId]
             );
             $studentsCount = (int)($fallback['student_count'] ?? 0);
             $sessionsCount = $studentsCount;
@@ -247,9 +248,9 @@ final class TeacherPortalController
 
         $riskDist = Database::fetchAll(
             'SELECT risk_level AS level, COUNT(*) AS cnt
-             FROM session_summaries WHERE exam_id = ? AND account_id = ?
+             FROM session_summaries WHERE (exam_id = ? OR exam_id = ?) AND (account_id = ? OR account_id = 0)
              GROUP BY risk_level',
-            [$id, $accountId]
+            [$internalExamId, $quizId, $accountId]
         );
 
         $overTime = Database::fetchAll(
@@ -533,7 +534,7 @@ final class TeacherPortalController
     /** Fetch an exam and enforce that the teacher owns it. */
     private static function ownedExam(int $id, int $accountId, int $teacherId): array
     {
-        $exam = Database::fetchOne('SELECT * FROM exams WHERE id = ?', [$id]);
+        $exam = Database::fetchOne('SELECT * FROM exams WHERE (id = ? OR moodle_quiz_id = ?) AND (account_id = ? OR account_id = 0)', [$id, $id, $accountId]);
         if (!$exam || !Auth::teacherOwnsExam($accountId, $teacherId, $exam)) {
             Response::error('الامتحان غير موجود أو لا يخصّك', 404);
         }
