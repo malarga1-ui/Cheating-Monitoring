@@ -509,10 +509,10 @@ function CourseStudentTable({ students }) {
               const participated = s.exams_count > 0
               return (
                 <tr key={s.student_id || s.id} 
-                  onClick={() => participated ? navigate(`/teacher/portal/students/${s.student_id || s.id}`) : null}
-                  className={`transition-colors ${participated ? 'cursor-pointer hover:bg-brand-50/30' : 'opacity-60 bg-slate-50'}`}>
+                  onClick={() => navigate(`/teacher/portal/students/${s.student_id || s.id}`)}
+                  className={`cursor-pointer transition-colors hover:bg-brand-50/30 ${participated ? '' : 'bg-slate-50/50'}`}>
                   <td className="px-4 py-3">
-                    <p className={`font-bold ${participated ? 'text-slate-700' : 'text-slate-500'}`}>{s.fullname}</p>
+                    <p className="font-bold text-slate-700">{s.fullname}</p>
                     <p className="text-[11px] text-slate-400">{s.username}</p>
                   </td>
                   <td className="px-3 py-3 text-center font-bold text-slate-600">{s.exams_count}</td>
