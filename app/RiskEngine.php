@@ -184,17 +184,43 @@ final class RiskEngine
         return ($n_F + $n_D + $n_P) / 3.0;
     }
 
+    public const PRESETS = [
+        'balanced' => [
+            'label_ar' => 'متوازن (الافتراضي)',
+            'weights'  => ['behavioral' => 4.0 / 15.0, 'ai' => 3.0 / 15.0, 'similarity' => 4.0 / 15.0, 'network' => 4.0 / 15.0],
+            'description' => 'مناسب للامتحانات المختلطة (أسئلة مقالية واختيارية).',
+        ],
+        'mcq' => [
+            'label_ar' => 'اختيار من متعدد (MCQ)',
+            'weights'  => ['behavioral' => 0.50, 'ai' => 0.00, 'similarity' => 0.00, 'network' => 0.50],
+            'description' => 'مناسب للامتحانات الموضوعية، يركز على سلوك التصفح وأمان الشبكة.',
+        ],
+        'essay' => [
+            'label_ar' => 'أسئلة مقالية (Essay)',
+            'weights'  => ['behavioral' => 0.20, 'ai' => 0.35, 'similarity' => 0.35, 'network' => 0.10],
+            'description' => 'يركز بشكل مكثف على كشف الذكاء الاصطناعي والتشابه النصي.',
+        ],
+        'coding' => [
+            'label_ar' => 'برمجة وكتابة كود (Coding)',
+            'weights'  => ['behavioral' => 0.25, 'ai' => 0.35, 'similarity' => 0.30, 'network' => 0.10],
+            'description' => 'مناسب لامتحانات البرمجة وحل المسائل البرمجية.',
+        ],
+    ];
+
     /* ── Main Scoring (Eq 3.16) ────────────────────────────────── */
 
     /**
      * Compute final risk score using availability-adjusted weighted sum.
+     * Supports dynamic presets and custom teacher-defined weights.
      *
      * @param array $counters session_summaries columns + exam context.
      *   Required keys: question_count, exam_minutes
+     *   Optional keys: preset ('balanced'|'mcq'|'essay'|'coding'), weights: array{behavioral:float, ai:float, similarity:float, network:float}
      *   Optional: ai_suspect_score (0-100), similarity_max_score (0-100), network_score_N (0-100)
+     * @param array|null $customWeights Optional explicit weight override
      * @return array{score:int, level:string, contributions:array, categories:array}
      */
-    public static function score(array $counters): array
+    public static function score(array $counters, ?array $customWeights = null): array
     {
         // Exam context
         $Q = max(1, (int)($counters['question_count'] ?? 6));
@@ -213,12 +239,22 @@ final class RiskEngine
         $netRaw = (float)($counters['network_score_N'] ?? 0);
         $N = min(1.0, max(0.0, $netRaw / 100.0));
 
-        // 2. Availability-adjusted weighted sum (Eq 3.16)
-        $wB = 4.0 / 15.0;
-        $wA = 3.0 / 15.0;
-        $wS = 4.0 / 15.0;
-        $wN = 4.0 / 15.0;
+        // 2. Resolve weights (Preset vs Custom vs Default Balanced)
+        $presetKey = (string)($counters['preset'] ?? 'balanced');
+        $resolvedWeights = self::PRESETS[$presetKey]['weights'] ?? self::PRESETS['balanced']['weights'];
 
+        if ($customWeights !== null) {
+            $resolvedWeights = array_merge($resolvedWeights, $customWeights);
+        } elseif (!empty($counters['weights']) && is_array($counters['weights'])) {
+            $resolvedWeights = array_merge($resolvedWeights, $counters['weights']);
+        }
+
+        $wB = (float)($resolvedWeights['behavioral'] ?? (4.0 / 15.0));
+        $wA = (float)($resolvedWeights['ai'] ?? (3.0 / 15.0));
+        $wS = (float)($resolvedWeights['similarity'] ?? (4.0 / 15.0));
+        $wN = (float)($resolvedWeights['network'] ?? (4.0 / 15.0));
+
+        // 3. Availability-adjusted weighted sum (Eq 3.16)
         $numerator   = $wB * $B + $wA * $A + $wS * $S + $wN * $N;
         $denominator = $wB + $wA + $wS + $wN;
 
@@ -226,15 +262,16 @@ final class RiskEngine
         $riskPct = min(100.0, max(0.0, $riskPct));
         $riskScore = (int)round($riskPct);
 
-        // 3. Category breakdown for UI
+        // 4. Category breakdown for UI
+        $sumW = max(0.001, $wB + $wA + $wS + $wN);
         $categories = [
-            'behavioral' => ['score' => (int)round($B * 100), 'max' => 100, 'weight' => (int)round($wB * 100)],
-            'ai'         => ['score' => (int)round($A * 100), 'max' => 100, 'weight' => (int)round($wA * 100)],
-            'similarity' => ['score' => (int)round($S * 100), 'max' => 100, 'weight' => (int)round($wS * 100)],
-            'network'    => ['score' => (int)round($N * 100), 'max' => 100, 'weight' => (int)round($wN * 100)],
+            'behavioral' => ['score' => (int)round($B * 100), 'max' => 100, 'weight' => (int)round(($wB / $sumW) * 100)],
+            'ai'         => ['score' => (int)round($A * 100), 'max' => 100, 'weight' => (int)round(($wA / $sumW) * 100)],
+            'similarity' => ['score' => (int)round($S * 100), 'max' => 100, 'weight' => (int)round(($wS / $sumW) * 100)],
+            'network'    => ['score' => (int)round($N * 100), 'max' => 100, 'weight' => (int)round(($wN / $sumW) * 100)],
         ];
 
-        // 4. Per-indicator raw values (for UI detail)
+        // 5. Per-indicator raw values (for UI detail)
         $contributions = [];
         foreach (self::DEFAULT_INDICATORS as $key => $spec) {
             $contributions[$key] = (int)round((float)($counters[$key] ?? 0));
@@ -243,6 +280,7 @@ final class RiskEngine
         return [
             'score'         => $riskScore,
             'level'         => self::levelFor($riskScore),
+            'preset'        => $presetKey,
             'contributions' => $contributions,
             'categories'    => $categories,
         ];
