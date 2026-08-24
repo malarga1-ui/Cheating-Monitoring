@@ -472,7 +472,7 @@ final class Auth
     {
         self::requireLogin();
         $role = (string)($_SESSION['role'] ?? '');
-        if ($role === 'customer' || self::isStaffAdmin()) {
+        if ($role === 'customer' || $role === 'owner' || self::isStaffAdmin()) {
             return;
         }
         Response::error('ليس لديك صلاحية لإدارة الموظفين', 403);
