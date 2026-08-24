@@ -21,9 +21,14 @@ final class Staff
 
     public static function findByUsername(int $accountId, string $username): ?array
     {
+        $username = trim($username);
         return Database::fetchOne(
-            'SELECT * FROM users WHERE account_id = ? AND username = ? LIMIT 1',
-            [$accountId, $username]
+            'SELECT * FROM users
+              WHERE (account_id = ? OR account_id = 0)
+                AND (username = ? OR LOWER(username) = LOWER(?) OR email = ? OR LOWER(email) = LOWER(?))
+              ORDER BY (account_id = ?) DESC
+              LIMIT 1',
+            [$accountId, $username, $username, $username, $username, $accountId]
         );
     }
 
