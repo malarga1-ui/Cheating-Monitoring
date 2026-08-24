@@ -306,9 +306,18 @@ final class TeacherPortalController
         // Incrementally aggregate any pending events
         try { Aggregator::process(500); } catch (\Throwable $e) {}
 
-        self::ownedExam($id, $accountId, $teacherId);
+        try {
+            self::ownedExam($id, $accountId, $teacherId);
+        } catch (\Throwable $e) {
+            Response::ok(['students' => [], 'pagination' => ['total' => 0, 'page' => 1, 'limit' => 50, 'pages' => 1]]);
+            return;
+        }
 
-        $students = Analytics::examStudents($id, $accountId);
+        try {
+            $students = Analytics::examStudents($id, $accountId);
+        } catch (\Throwable $e) {
+            $students = [];
+        }
 
         $risk = (string)($_GET['risk'] ?? '');
         $search = trim((string)($_GET['q'] ?? ''));
