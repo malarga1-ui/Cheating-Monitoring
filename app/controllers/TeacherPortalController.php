@@ -1038,8 +1038,9 @@ final class TeacherPortalController
                   OR s.id IN (SELECT ss2.student_id FROM session_summaries ss2 JOIN exams e ON e.id = ss2.exam_id WHERE e.account_id = ? AND e.moodle_course_id IN ($in))
                   OR s.moodle_user_id IN (SELECT ev.moodle_user_id FROM events ev WHERE ev.account_id = ? AND ev.moodle_course_id IN ($in))
                 )
+                AND s.username NOT IN (SELECT username FROM teachers WHERE account_id = ? AND username != '')
               GROUP BY s.id, s.moodle_user_id, s.fullname, s.username",
-            [$accountId, $accountId, $accountId, $accountId, $accountId, $accountId]
+            [$accountId, $accountId, $accountId, $accountId, $accountId, $accountId, $accountId]
         );
 
         if ($search !== '') {
@@ -1074,6 +1075,7 @@ final class TeacherPortalController
                 COUNT(DISTINCT CASE WHEN ss.same_ip_student_count > 0 THEN s.id END) AS network_flagged,
                 COUNT(DISTINCT CASE WHEN ss.similarity_max_score >= 50 THEN s.id END) AS sim_flagged
                FROM students s
+<<<<<<< HEAD
                LEFT JOIN session_summaries ss ON ss.student_id = s.id AND ss.account_id = s.account_id
                     AND ss.exam_id IN (SELECT id FROM exams WHERE account_id = ? AND moodle_course_id IN ($in))
               WHERE s.account_id = ?
@@ -1084,6 +1086,14 @@ final class TeacherPortalController
                   OR s.moodle_user_id IN (SELECT ev.moodle_user_id FROM events ev WHERE ev.account_id = ? AND ev.moodle_course_id IN ($in))
                 )",
             [$accountId, $accountId, $accountId, $accountId, $accountId, $accountId]
+=======
+               LEFT JOIN course_students cs ON cs.student_id = s.id AND cs.account_id = s.account_id AND cs.moodle_course_id IN ($in)
+               LEFT JOIN session_summaries ss ON ss.student_id = s.id AND ss.account_id = s.account_id
+                    AND ss.exam_id IN (SELECT id FROM exams WHERE account_id = ? AND moodle_course_id IN ($in))
+              WHERE s.account_id = ? AND (cs.moodle_course_id IN ($in) OR ss.exam_id IS NOT NULL)
+                AND s.id NOT IN (SELECT moodle_teacher_id FROM teachers WHERE account_id = ? AND moodle_teacher_id IS NOT NULL)",
+            [$accountId, $accountId, $accountId]
+>>>>>>> b6a3d1dc (Fix teacher portal students query: include exam students and exclude teacher accounts)
         );
 
         Response::ok([
