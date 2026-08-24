@@ -34,7 +34,7 @@ final class AIDetector
             ];
         }
 
-        $apiKey = getenv('RAPIDAPI_KEY') ?: '';
+        $apiKey = getenv('RAPIDAPI_KEY') ?: (string)em_config('ai_content_detection.rapidapi_key', '');
         if ($apiKey === '') {
             error_log('[AIDetector] RAPIDAPI_KEY not configured');
             return [
@@ -42,7 +42,7 @@ final class AIDetector
                 'status'     => 'CONFIG_ERROR',
                 'provider'   => 'NONE',
                 'word_count' => $wordCount,
-                'reason'     => 'RAPIDAPI_KEY not set in environment',
+                'reason'     => 'RAPIDAPI_KEY not set in environment or configuration',
             ];
         }
 

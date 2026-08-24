@@ -27,7 +27,8 @@ if (!class_exists('Database')) {
     }
 }
 
-require_once __DIR__ . '/server/app/RiskEngine.php';
+$riskPath = file_exists(__DIR__ . '/app/RiskEngine.php') ? __DIR__ . '/app/RiskEngine.php' : __DIR__ . '/server/app/RiskEngine.php';
+require_once $riskPath;
 
 // ─── Table 4.3 Benchmark Data ──────────────────────────────────────
 // Q=6, T=900s
