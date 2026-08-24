@@ -71,8 +71,10 @@ export default function Dashboard() {
   if (err) return <EmptyState icon="warning" title="تعذر تحميل البيانات" hint={err} />
 
   const courses = edu?.courses || []
-  const totalExams = courses.reduce((s, c) => s + c.exam_count, 0)
-  const totalSuspicious = courses.reduce((s, c) => s + c.suspicious_count, 0)
+  const totalCourses = courses.length > 0 ? courses.length : (summary?.totals?.courses || 0)
+  const totalExams = courses.length > 0 ? courses.reduce((s, c) => s + c.exam_count, 0) : (summary?.totals?.exams || 0)
+  const totalStudents = edu?.total_students ?? summary?.totals?.students ?? 0
+  const totalSuspicious = courses.length > 0 ? courses.reduce((s, c) => s + c.suspicious_count, 0) : (summary?.totals?.suspicious_students || 0)
   const riskDist = edu?.risk_distribution || []
   const maxRiskCount = Math.max(...riskDist.map(r => r.count), 1)
   const threats = edu?.threats || []
@@ -117,13 +119,13 @@ export default function Dashboard() {
 
       {/* Summary Stats */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard title="المواد" value={courses.length} accent="brand"
+        <StatCard title="المواد" value={totalCourses} accent="brand"
           icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 3 3 7l9 4 9-4-9-4Z" strokeLinejoin="round"/><path d="M5 9.5V15c0 1.2 3.1 3 7 3s7-1.8 7-3V9.5M19 13v4"/></svg>}
           delay={0} />
         <StatCard title="الامتحانات" value={totalExams} accent="violet"
           icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>}
           delay={60} />
-        <StatCard title="الطلاب" value={edu?.total_students ?? 0} accent="cyan"
+        <StatCard title="الطلاب" value={totalStudents} accent="cyan"
           icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3 3.4-4.5 6.5-4.5s5.7 1.5 6.5 4.5"/><path d="M16 5.2a3.5 3.5 0 0 1 0 5.6M17.5 15.6c2 .8 3.4 2.3 4 4.4" strokeLinejoin="round"/></svg>}
           delay={120} />
         <StatCard title="مشبوهون" value={totalSuspicious} accent="rose"
