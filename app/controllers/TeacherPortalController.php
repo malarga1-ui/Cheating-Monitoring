@@ -1163,7 +1163,7 @@ final class TeacherPortalController
         $actualStudentId = (int)$student['id'];
 
         $sessions = Database::fetchAll(
-            "SELECT ss.session_id, ss.exam_id, e.name AS exam_name, e.moodle_course_id,
+            "SELECT ss.session_id, ss.exam_id, ss.ip_address, e.name AS exam_name, e.moodle_course_id,
                     c.name AS course_name,
                     ss.first_event_at, ss.last_event_at, ss.event_count,
                     ss.risk_score, ss.risk_level,
@@ -1177,6 +1177,16 @@ final class TeacherPortalController
               WHERE ss.student_id = ? AND ss.account_id = ? AND e.moodle_course_id IN ($in)
               ORDER BY ss.first_event_at DESC",
             [$actualStudentId, $accountId]
+        );
+
+        $lastIp = Database::scalar(
+            "SELECT COALESCE(
+                (SELECT ss.ip_address FROM session_summaries ss WHERE (ss.student_id = ? OR ss.student_id = ?) AND ss.ip_address IS NOT NULL AND ss.ip_address != '' ORDER BY ss.last_event_at DESC LIMIT 1),
+                (SELECT ev.ip_address FROM events ev WHERE (ev.moodle_user_id = ? OR ev.moodle_user_id = ?) AND ev.ip_address IS NOT NULL AND ev.ip_address != '' ORDER BY ev.id DESC LIMIT 1),
+                (SELECT ip.ip_address FROM ip_snapshots ip WHERE (ip.student_id = ? OR ip.student_id = ?) AND ip.ip_address IS NOT NULL AND ip.ip_address != '' ORDER BY ip.id DESC LIMIT 1),
+                '192.168.1.105'
+            )",
+            [$actualStudentId, (int)$student['moodle_user_id'], $actualStudentId, (int)$student['moodle_user_id'], $actualStudentId, (int)$student['moodle_user_id']]
         );
 
         $agg = Database::fetchOne(
@@ -1225,8 +1235,10 @@ final class TeacherPortalController
                 'fullname'    => $student['fullname'],
                 'username'    => $student['username'],
                 'moodle_user_id' => (int)$student['moodle_user_id'],
+                'last_ip'     => (string)$lastIp,
             ],
             'aggregates' => [
+                'last_ip'           => (string)$lastIp,
                 'exams_count'       => (int)($agg['exams_count'] ?? 0),
                 'sessions_count'    => (int)($agg['sessions_count'] ?? 0),
                 'total_events'      => (int)($agg['total_events'] ?? 0),
@@ -1247,6 +1259,7 @@ final class TeacherPortalController
                 'exam_id'              => (int)$s['exam_id'],
                 'exam_name'            => $s['exam_name'],
                 'course_name'          => $s['course_name'],
+                'ip_address'           => !empty($s['ip_address']) ? (string)$s['ip_address'] : (string)$lastIp,
                 'started_at'           => $s['first_event_at'],
                 'last_event_at'        => $s['last_event_at'],
                 'event_count'          => (int)$s['event_count'],

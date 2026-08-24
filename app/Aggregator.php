@@ -79,7 +79,7 @@ final class Aggregator
         while ($cursor < $maxId) {
             $events = Database::fetchAll(
                 'SELECT id, account_id, session_id, event_type, moodle_user_id, moodle_quiz_id,
-                        moodle_course_id, moodle_cmid, attempt_id, event_time, duration_ms, payload
+                        moodle_course_id, moodle_cmid, attempt_id, event_time, duration_ms, payload, ip_address
                  FROM events WHERE id > ? ORDER BY id ASC LIMIT ' . (int)$batchSize,
                 [$cursor]
             );
@@ -158,6 +158,7 @@ final class Aggregator
                 'quiz_name'         => em_truncate($quiz['name'] ?? '', 255),
                 'teacher_id'        => $teacherId,
                 'teacher_name'      => $teacherName,
+                'ip_address'        => em_truncate($ev['ip_address'] ?? '', 45),
                 // Value fields extracted from event metadata for accurate analysis.
                 'copy_chars'        => self::metaInt($meta, ['selection_length', 'selectionLength']),
                 'typing_down'       => self::metaInt($meta, ['keydown_count', 'typing.keydown_count']),
@@ -631,7 +632,7 @@ final class Aggregator
             ':mscroll' => $merged['mouse_scroll_count'], ':other' => $merged['other_count'],
             ':risk' => $risk['score'], ':level' => $risk['level'],
             // v9: network + AI + similarity defaults (updated later by analyzers)
-            ':ip' => '', ':ipcountry' => '', ':ipcity' => '',
+            ':ip' => (string)($merged['ip_address'] ?? ($c['ip_address'] ?? ($existing['ip_address'] ?? ''))), ':ipcountry' => '', ':ipcity' => '',
             ':sameip' => 0, ':ipchanged' => 0, ':iprisk' => 0,
             ':aiscore' => 0, ':acount' => 0, ':avglen' => 0, ':tratio' => 0,
             ':simscore' => 0, ':simmatch' => 0,
@@ -671,6 +672,7 @@ final class Aggregator
                      :ks_samples)
                 ON DUPLICATE KEY UPDATE
                   first_event_at = VALUES(first_event_at), last_event_at = VALUES(last_event_at),
+                  ip_address = IF(VALUES(ip_address) != '', VALUES(ip_address), ip_address),
                   event_count = VALUES(event_count),
                   tab_hidden_count = VALUES(tab_hidden_count),
                   tab_visible_count = VALUES(tab_visible_count),
