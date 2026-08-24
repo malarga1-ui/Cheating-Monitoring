@@ -86,14 +86,12 @@ final class Teachers
                 AND (
                   username = ?
                   OR LOWER(username) = LOWER(?)
-                  OR email = ?
-                  OR LOWER(email) = LOWER(?)
                   OR (moodle_teacher_id = ? AND ? > 0)
                   OR fullname LIKE ?
                 )
               ORDER BY (account_id = ?) DESC, moodle_teacher_id ASC
               LIMIT 1',
-            [$accountId, $username, $username, $username, $username, $isNumeric, $isNumeric, "%$username%", $accountId]
+            [$accountId, $username, $username, $isNumeric, $isNumeric, "%$username%", $accountId]
         );
 
         // Fallback: if not found in teachers table, try to find teacher in recent events payload
