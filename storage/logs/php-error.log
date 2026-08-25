@@ -81,3 +81,6 @@
 #3 C:\Users\hp\Desktop\final_prog\server\app\Router.php(48): AuthController::login()
 #4 C:\Users\hp\Desktop\final_prog\server\public\index.php(101): Router->dispatch('POST', '/api/auth/login')
 #5 {main}
+[25-Aug-2026 04:48:44 UTC] PHP Warning:  session_name(): Session name cannot be changed after headers have already been sent in C:\Users\hp\Desktop\final_prog\server\app\Auth.php on line 15
+[25-Aug-2026 04:48:44 UTC] PHP Warning:  session_set_cookie_params(): Session cookie parameters cannot be changed after headers have already been sent in C:\Users\hp\Desktop\final_prog\server\app\Auth.php on line 16
+[25-Aug-2026 04:48:44 UTC] PHP Warning:  session_start(): Session cannot be started after headers have already been sent in C:\Users\hp\Desktop\final_prog\server\app\Auth.php on line 24

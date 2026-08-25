@@ -6,58 +6,68 @@ final class AuthController
 {
     public static function login(): void
     {
-        Auth::start();
+        try {
+            Auth::start();
 
-        $body = em_body_json() ?? [];
-        $emailOrUsername = strtolower(trim((string)($body['email'] ?? '')));
-        $password = (string)($body['password'] ?? '');
+            $body = em_body_json() ?? [];
+            $emailOrUsername = strtolower(trim((string)($body['email'] ?? '')));
+            $password = (string)($body['password'] ?? '');
 
-        if ($emailOrUsername === '' || $password === '') {
-            Response::error('أدخل البريد الإلكتروني أو اسم المستخدم وكلمة المرور', 422);
+            if ($emailOrUsername === '' || $password === '') {
+                Response::error('أدخل البريد الإلكتروني أو اسم المستخدم وكلمة المرور', 422);
+                return;
+            }
+
+            // Rate limiting: max 5 attempts per minute per IP
+            $ip = em_rate_limit_ip();
+            $loginAttempts = self::getLoginAttempts($ip);
+            if ($loginAttempts >= 5) {
+                Response::error('تم حظر هذا العنوان مؤقتاً — حاول بعد دقيقة', 429);
+                return;
+            }
+
+            // Simple bruteforce delay.
+            usleep(200000);
+
+            // Try email first, then username
+            $account = Accounts::findByEmail($emailOrUsername);
+            if ($account === null) {
+                $account = Accounts::findByUsername($emailOrUsername);
+            }
+            if ($account === null) {
+                self::recordLoginAttempt($ip);
+                Response::error('البريد الإلكتروني أو اسم المستخدم غير مسجّل', 401);
+                return;
+            }
+
+            Accounts::enforceStatus((int)$account['id']);
+            $account = Accounts::findById((int)$account['id']);
+
+            if (Accounts::locked($account)) {
+                Response::error('انتهت نسختك التجريبية — أنشئ حساباً جديداً للاستمرار', 403);
+                return;
+            }
+
+            if (!password_verify($password, $account['password_hash'])) {
+                self::recordLoginAttempt($ip);
+                Response::error('كلمة المرور غير صحيحة — حاول مرة أخرى', 401);
+                return;
+            }
+
+            // Clear login attempts on success
+            self::clearLoginAttempts($ip);
+
+            Auth::attempt($account['email'], $password);
+
+            Response::ok([
+                'user' => Auth::user(),
+                'status' => Accounts::status((int)$account['id']),
+                'csrf' => Auth::csrfToken(),
+            ]);
+        } catch (\Throwable $e) {
+            error_log('[AuthLoginError] ' . $e->getMessage());
+            Response::error('تعذر تسجيل الدخول — تحقق من بيانات الاتصال', 500);
         }
-
-        // Rate limiting: max 5 attempts per minute per IP
-        $ip = em_rate_limit_ip();
-        $loginAttempts = self::getLoginAttempts($ip);
-        if ($loginAttempts >= 5) {
-            Response::error('تم حظر هذا العنوان مؤقتاً — حاول بعد دقيقة', 429);
-        }
-
-        // Simple bruteforce delay.
-        usleep(200000);
-
-        // Try email first, then username
-        $account = Accounts::findByEmail($emailOrUsername);
-        if ($account === null) {
-            $account = Accounts::findByUsername($emailOrUsername);
-        }
-        if ($account === null) {
-            self::recordLoginAttempt($ip);
-            Response::error('البريد الإلكتروني أو اسم المستخدم غير مسجّل', 401);
-        }
-
-        Accounts::enforceStatus((int)$account['id']);
-        $account = Accounts::findById((int)$account['id']);
-
-        if (Accounts::locked($account)) {
-            Response::error('انتهت نسختك التجريبية — أنشئ حساباً جديداً للاستمرار', 403);
-        }
-
-        if (!password_verify($password, $account['password_hash'])) {
-            self::recordLoginAttempt($ip);
-            Response::error('كلمة المرور غير صحيحة — حاول مرة أخرى', 401);
-        }
-
-        // Clear login attempts on success
-        self::clearLoginAttempts($ip);
-
-        Auth::attempt($account['email'], $password);
-
-        Response::ok([
-            'user' => Auth::user(),
-            'status' => Accounts::status((int)$account['id']),
-            'csrf' => Auth::csrfToken(),
-        ]);
     }
 
     public static function logout(): void
@@ -69,16 +79,21 @@ final class AuthController
 
     public static function me(): void
     {
-        Auth::start();
-        $user = Auth::user();
-        if (!$user) {
+        try {
+            Auth::start();
+            $user = Auth::user();
+            if (!$user) {
+                Response::error('غير مصرح', 401);
+                return;
+            }
+            Response::ok([
+                'user' => $user,
+                'status' => Accounts::status(Auth::accountId()),
+                'csrf' => Auth::csrfToken(),
+            ]);
+        } catch (\Throwable $e) {
             Response::error('غير مصرح', 401);
         }
-        Response::ok([
-            'user' => $user,
-            'status' => Accounts::status(Auth::accountId()),
-            'csrf' => Auth::csrfToken(),
-        ]);
     }
 
     public static function changePassword(): void
@@ -115,26 +130,34 @@ final class AuthController
 
     private static function getLoginAttempts(string $ip): int
     {
-        $result = Database::scalar(
-            'SELECT COUNT(*) FROM login_attempts WHERE ip_address = ? AND attempted_at > NOW() - INTERVAL 1 MINUTE',
-            [$ip]
-        );
-        return (int)$result;
+        try {
+            $result = Database::scalar(
+                'SELECT COUNT(*) FROM login_attempts WHERE ip_address = ? AND attempted_at > NOW() - INTERVAL 1 MINUTE',
+                [$ip]
+            );
+            return (int)$result;
+        } catch (\Throwable $e) {
+            return 0;
+        }
     }
 
     private static function recordLoginAttempt(string $ip): void
     {
-        Database::execute(
-            'INSERT INTO login_attempts (ip_address, attempted_at) VALUES (?, NOW())',
-            [$ip]
-        );
+        try {
+            Database::execute(
+                'INSERT INTO login_attempts (ip_address, attempted_at) VALUES (?, NOW())',
+                [$ip]
+            );
+        } catch (\Throwable $e) {}
     }
 
     private static function clearLoginAttempts(string $ip): void
     {
-        Database::execute(
-            'DELETE FROM login_attempts WHERE ip_address = ?',
-            [$ip]
-        );
+        try {
+            Database::execute(
+                'DELETE FROM login_attempts WHERE ip_address = ?',
+                [$ip]
+            );
+        } catch (\Throwable $e) {}
     }
 }

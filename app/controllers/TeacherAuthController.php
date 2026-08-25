@@ -14,12 +14,16 @@ final class TeacherAuthController
     /** Public list of registered universities (for the "pick your university" step). */
     public static function sites(): void
     {
-        $rows = Database::fetchAll(
-            "SELECT id, org_name, site_domain
-               FROM accounts
-              WHERE (status IS NULL OR status != 'suspended')
-              ORDER BY id ASC"
-        );
+        try {
+            $rows = Database::fetchAll(
+                "SELECT id, org_name, site_domain
+                   FROM accounts
+                  WHERE (status IS NULL OR status != 'suspended')
+                  ORDER BY id ASC"
+            );
+        } catch (\Throwable $e) {
+            $rows = [];
+        }
         if (empty($rows)) {
             $rows = [[
                 'id' => 1,
