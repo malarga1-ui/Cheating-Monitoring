@@ -566,6 +566,18 @@ final class TeacherPortalController
 
     /* ── v9: Advanced Analytics Endpoints ────────────────────────── */
 
+    /** Students list for a specific exam. */
+    public static function examStudents(int $id): void
+    {
+        Auth::requireTeacher();
+        $accountId = Auth::accountId();
+        $teacherId = Auth::teacherId();
+        $exam = self::ownedExam($id, $accountId, $teacherId);
+
+        $students = Analytics::examStudents((int)$exam['moodle_quiz_id'], (int)$exam['account_id']);
+        Response::ok(['students' => $students]);
+    }
+
     /** Network groups for an exam (students sharing same IP). */
     public static function examNetworkGroups(int $id): void
     {
