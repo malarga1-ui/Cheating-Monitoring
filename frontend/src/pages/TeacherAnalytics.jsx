@@ -70,18 +70,24 @@ function GaugeCircle({ value, max = 100, color, label }) {
   )
 }
 
-export default function TeacherAnalytics({ courseId: propCourseId }) {
+export default function TeacherAnalytics({ courseId: propCourseId, examId: propExamId }) {
   const params = useParams()
+  const examId = propExamId || params.id || params.examId
   const courseId = propCourseId || params.courseId
   const [data, setData] = useState(null)
   const [err, setErr] = useState('')
 
   useEffect(() => {
-    const url = '/api/teacher/analytics' + (courseId ? `?course_id=${courseId}` : '')
+    let url = '/api/teacher/analytics'
+    if (examId) {
+      url += `?exam_id=${examId}`
+    } else if (courseId) {
+      url += `?course_id=${courseId}`
+    }
     api.get(url)
       .then(setData)
       .catch((e) => setErr(e.message || 'تعذر تحميل البيانات'))
-  }, [courseId])
+  }, [examId, courseId])
 
   if (err) return <div className="rounded-2xl bg-rose-50 p-6 text-center"><p className="text-sm font-bold text-rose-600">{err}</p></div>
   if (!data) return <Spinner />

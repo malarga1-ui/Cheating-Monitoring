@@ -934,7 +934,7 @@ function CourseWorkspaceHeader({ courses, activeCourseId }) {
   // If inside an exam, show exam-specific sub-tabs. If on course level, show course tabs (Exams & Course Students).
   const tabs = examId ? [
     { key: 'dashboard', label: 'لوحة التحكم', to: `/teacher/portal/c/${activeCourseId}/exams/${examId}` },
-    { key: 'students', label: 'طلاب الامتحان', to: `/teacher/portal/c/${activeCourseId}/exams/${examId}` },
+    { key: 'students', label: 'طلاب الامتحان', to: `/teacher/portal/c/${activeCourseId}/exams/${examId}/students` },
     { key: 'network', label: 'الشبكات', to: `/teacher/portal/c/${activeCourseId}/exams/${examId}/network` },
     { key: 'devices', label: 'الأجهزة', to: `/teacher/portal/c/${activeCourseId}/exams/${examId}/devices` },
     { key: 'similarity', label: 'التشابه', to: `/teacher/portal/c/${activeCourseId}/exams/${examId}/similarity` },
@@ -1014,7 +1014,11 @@ function CourseWorkspace({ courses }) {
       <Routes>
         <Route index element={<Navigate to="exams" replace />} />
         <Route path="exams" element={<ExamsList courseId={courseId} />} />
-        <Route path="exams/:id" element={<ExamDetail />} />
+        <Route path="exams/:id" element={<TeacherAnalytics courseId={courseId} />} />
+        <Route path="exams/:id/students" element={<ExamDetail />} />
+        <Route path="exams/:id/network" element={<NetworkAnalysis courseId={courseId} />} />
+        <Route path="exams/:id/devices" element={<MultiDevice courseId={courseId} />} />
+        <Route path="exams/:id/similarity" element={<SimilarityDetection courseId={courseId} />} />
         <Route path="students" element={<StudentsList courseId={courseId} />} />
         <Route path="students/:id" element={<StudentDetail />} />
         <Route path="network" element={<NetworkAnalysis courseId={courseId} />} />
