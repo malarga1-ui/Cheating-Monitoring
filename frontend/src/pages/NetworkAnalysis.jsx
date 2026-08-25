@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { api } from '../api'
 import Card from '../components/Card'
 import Spinner from '../components/Spinner'
@@ -68,7 +68,9 @@ function SummaryStat({ label, value, accent = 'brand', delay = 0 }) {
  )
 }
 
-export default function NetworkAnalysis() {
+export default function NetworkAnalysis({ courseId: propCourseId }) {
+ const params = useParams()
+ const courseId = propCourseId || params.courseId
  const [groups, setGroups] = useState([])
  const [busy, setBusy] = useState(true)
  const [err, setErr] = useState('')
@@ -79,9 +81,10 @@ export default function NetworkAnalysis() {
  ;(async () => {
  setBusy(true)
  try {
- const data = await api.get('/api/teacher/exams/network')
+ const url = '/api/teacher/exams/network' + (courseId ? `?course_id=${courseId}` : '')
+ const data = await api.get(url)
  if (!cancelled) {
- setGroups((data?.groups || []).sort((a, b) => (b.risk_score || 0) - (a.risk_score || 0)))
+ setGroups((data?.groups || (Array.isArray(data) ? data : [])).sort((a, b) => (b.risk_score || 0) - (a.risk_score || 0)))
  setErr('')
  }
  } catch (e) {
@@ -91,7 +94,7 @@ export default function NetworkAnalysis() {
  }
  })()
  return () => { cancelled = true }
- }, [])
+ }, [courseId])
 
  const filtered = useMemo(() => {
  if (filter === 'all') return groups

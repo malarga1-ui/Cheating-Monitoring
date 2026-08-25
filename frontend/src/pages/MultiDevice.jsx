@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { api } from '../api'
 import Card from '../components/Card'
 import Spinner from '../components/Spinner'
@@ -208,19 +208,22 @@ function DeviceCard({ suspect, index }) {
  )
 }
 
-export default function MultiDevice() {
+export default function MultiDevice({ courseId: propCourseId }) {
+ const params = useParams()
+ const courseId = propCourseId || params.courseId
  const [suspects, setSuspects] = useState(null)
  const [err, setErr] = useState('')
 
  useEffect(() => {
+ const url = '/api/teacher/exams/devices' + (courseId ? `?course_id=${courseId}` : '')
  api
- .get('/api/teacher/exams/devices')
+ .get(url)
  .then((d) => {
- const sorted = (d.suspects || []).sort((a, b) => (b.device_count || 0) - (a.device_count || 0))
+ const sorted = (d.suspects || (Array.isArray(d) ? d : [])).sort((a, b) => (b.device_count || 0) - (a.device_count || 0))
  setSuspects(sorted)
  })
  .catch((e) => setErr(e.message))
- }, [])
+ }, [courseId])
 
  const totalSuspects = suspects?.length ?? 0
  const totalDevices = suspects?.reduce((sum, s) => sum + (s.device_count || 0), 0) ?? 0

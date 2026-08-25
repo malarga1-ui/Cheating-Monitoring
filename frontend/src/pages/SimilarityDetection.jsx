@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { api } from '../api'
 import Card from '../components/Card'
 import Spinner from '../components/Spinner'
@@ -130,7 +130,9 @@ function SimilarityPair({ pair, index }) {
  )
 }
 
-export default function SimilarityDetection() {
+export default function SimilarityDetection({ courseId: propCourseId }) {
+ const params = useParams()
+ const courseId = propCourseId || params.courseId
  const [pairs, setPairs] = useState([])
  const [busy, setBusy] = useState(true)
  const [err, setErr] = useState('')
@@ -139,8 +141,9 @@ export default function SimilarityDetection() {
  useEffect(() => {
  let cancelled = false
  setBusy(true)
+ const url = '/api/teacher/exams/similarity' + (courseId ? `?course_id=${courseId}` : '')
  api
- .get('/api/teacher/exams/similarity')
+ .get(url)
  .then((data) => {
  if (cancelled) return
  const list = Array.isArray(data) ? data : data.pairs || []
@@ -156,7 +159,7 @@ export default function SimilarityDetection() {
  if (!cancelled) setBusy(false)
  })
  return () => { cancelled = true }
- }, [])
+ }, [courseId])
 
  const filtered = riskFilter
  ? pairs.filter((p) => p.risk_level === riskFilter)

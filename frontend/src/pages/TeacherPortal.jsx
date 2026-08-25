@@ -88,12 +88,14 @@ function ActionModal({ open, type, studentName, onConfirm, onCancel }) {
 }
 
 /* ─── Header ─────────────────────────────────────────────── */
-function Header() {
+function Header({ courses = [] }) {
   const { user, logout } = useAuth()
   const { t, lang, toggle } = useI18n()
   const navigate = useNavigate()
   const loc = useLocation()
   const p = loc.pathname
+
+  const isInsideCourse = p.includes('/teacher/portal/c/')
 
   async function handleLogout() { await logout(); navigate('/teacher-login', { replace: true }) }
 
@@ -110,16 +112,6 @@ function Header() {
       setSyncing(false)
     }
   }
-
-  const tabs = [
-    { to: '/teacher/portal', label: 'لوحة التحكم', exact: true },
-    { to: '/teacher/portal/exams', label: 'الامتحانات' },
-    { to: '/teacher/portal/courses', label: 'المساقات' },
-    { to: '/teacher/portal/students', label: 'الطلاب' },
-    { to: '/teacher/portal/network', label: 'الشبكات' },
-    { to: '/teacher/portal/devices', label: 'الأجهزة' },
-    { to: '/teacher/portal/similarity', label: 'التشابه' },
-  ]
 
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200/70 bg-white/70 backdrop-blur-xl">
@@ -148,16 +140,15 @@ function Header() {
           </button>
         </div>
       </div>
-      <nav className="flex gap-0.5 overflow-x-auto border-t border-slate-100 px-5 lg:px-8">
-        {tabs.map(tab => {
-          const active = tab.exact ? p === tab.to : p.startsWith(tab.to) && tab.to !== '/teacher/portal'
-          return (
-            <Link key={tab.to} to={tab.to} className={`whitespace-nowrap px-4 py-2.5 text-xs font-extrabold transition-all border-b-2 ${active ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-400 hover:text-slate-600 hover:border-slate-200'}`}>
-              {tab.label}
-            </Link>
-          )
-        })}
-      </nav>
+
+      {!isInsideCourse && (
+        <nav className="flex gap-1 overflow-x-auto border-t border-slate-100 px-5 py-1.5 lg:px-8">
+          <Link to="/teacher/portal/courses" className="flex items-center gap-2 rounded-xl bg-brand-50 px-4 py-2 text-xs font-extrabold text-brand-700 ring-1 ring-brand-200">
+            <span>📚</span>
+            <span>مساقاتي الدراسية ({courses.length})</span>
+          </Link>
+        </nav>
+      )}
     </header>
   )
 }
@@ -276,17 +267,19 @@ function StudentTable({ students, compact = false }) {
   )
 }
 
-
 /* ─── PAGE 2: Exams List ─────────────────────────────────── */
-function ExamsList() {
+function ExamsList({ courseId: propCourseId }) {
+  const params = useParams()
+  const courseId = propCourseId || params.courseId
   const [exams, setExams] = useState(null)
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState('all')
   const navigate = useNavigate()
 
   useEffect(() => {
-    api.get('/api/teacher/exams').then(d => setExams(Array.isArray(d) ? d : [])).catch(() => setExams([]))
-  }, [])
+    const url = '/api/teacher/exams' + (courseId ? `?course_id=${courseId}` : '')
+    api.get(url).then(d => setExams(Array.isArray(d) ? d : [])).catch(() => setExams([]))
+  }, [courseId])
 
   const filtered = Array.isArray(exams) ? exams.filter(e => {
     if (q && !e.name?.toLowerCase().includes(q.toLowerCase()) && !e.course_name?.toLowerCase().includes(q.toLowerCase())) return false
@@ -308,43 +301,200 @@ function ExamsList() {
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="بحث..." className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold outline-none focus:border-brand-400 focus:ring-4 focus:ring-brand-500/10" />
         </div>
       </div>
-      {exams === null ? <Spinner /> : <ExamTable exams={filtered} onRowClick={(id) => navigate(`/teacher/portal/exams/${id}`)} />}
+      {exams === null ? <Spinner /> : <ExamTable exams={filtered} onRowClick={(id) => navigate(courseId ? `/teacher/portal/c/${courseId}/exams/${id}` : `/teacher/portal/exams/${id}`)} />}
     </div>
   )
 }
 
-/* ─── PAGE 3: Courses List ───────────────────────────────── */
-function CoursesList() {
-  const [courses, setCourses] = useState(null)
+/* ─── PAGE 3: Courses List (6-Card Grid + Pagination + Pastel Palettes) ─── */
+const COURSE_CARD_PALETTES = [
+  {
+    bg: 'bg-gradient-to-br from-indigo-500/10 via-white to-violet-500/10 border-indigo-200/80 hover:border-indigo-400',
+    headerBadge: 'bg-indigo-600 text-white',
+    studentBadge: 'bg-indigo-50 text-indigo-700 ring-indigo-200',
+    examBadge: 'bg-violet-50 text-violet-700 ring-violet-200',
+    btn: 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20',
+    icon: '📚',
+    accentLine: 'bg-gradient-to-r from-indigo-500 to-violet-600'
+  },
+  {
+    bg: 'bg-gradient-to-br from-emerald-500/10 via-white to-teal-500/10 border-emerald-200/80 hover:border-emerald-400',
+    headerBadge: 'bg-emerald-600 text-white',
+    studentBadge: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+    examBadge: 'bg-teal-50 text-teal-700 ring-teal-200',
+    btn: 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20',
+    icon: '🧬',
+    accentLine: 'bg-gradient-to-r from-emerald-500 to-teal-600'
+  },
+  {
+    bg: 'bg-gradient-to-br from-amber-500/10 via-white to-orange-500/10 border-amber-200/80 hover:border-amber-400',
+    headerBadge: 'bg-amber-600 text-white',
+    studentBadge: 'bg-amber-50 text-amber-700 ring-amber-200',
+    examBadge: 'bg-orange-50 text-orange-700 ring-orange-200',
+    btn: 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-600/20',
+    icon: '💡',
+    accentLine: 'bg-gradient-to-r from-amber-500 to-orange-600'
+  },
+  {
+    bg: 'bg-gradient-to-br from-rose-500/10 via-white to-pink-500/10 border-rose-200/80 hover:border-rose-400',
+    headerBadge: 'bg-rose-600 text-white',
+    studentBadge: 'bg-rose-50 text-rose-700 ring-rose-200',
+    examBadge: 'bg-pink-50 text-pink-700 ring-pink-200',
+    btn: 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-600/20',
+    icon: '⚙️',
+    accentLine: 'bg-gradient-to-r from-rose-500 to-pink-600'
+  },
+  {
+    bg: 'bg-gradient-to-br from-sky-500/10 via-white to-blue-500/10 border-sky-200/80 hover:border-sky-400',
+    headerBadge: 'bg-sky-600 text-white',
+    studentBadge: 'bg-sky-50 text-sky-700 ring-sky-200',
+    examBadge: 'bg-blue-50 text-blue-700 ring-blue-200',
+    btn: 'bg-sky-600 hover:bg-sky-700 text-white shadow-sky-600/20',
+    icon: '🌐',
+    accentLine: 'bg-gradient-to-r from-sky-500 to-blue-600'
+  },
+  {
+    bg: 'bg-gradient-to-br from-purple-500/10 via-white to-fuchsia-500/10 border-purple-200/80 hover:border-purple-400',
+    headerBadge: 'bg-purple-600 text-white',
+    studentBadge: 'bg-purple-50 text-purple-700 ring-purple-200',
+    examBadge: 'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-200',
+    btn: 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-600/20',
+    icon: '🎓',
+    accentLine: 'bg-gradient-to-r from-purple-500 to-fuchsia-600'
+  },
+]
+
+function CoursesList({ courses: propCourses }) {
+  const [fetchedCourses, setFetchedCourses] = useState(null)
+  const [page, setPage] = useState(1)
   const navigate = useNavigate()
+  const { user } = useAuth()
 
   useEffect(() => {
-    api.get('/api/teacher/courses').then(d => setCourses(Array.isArray(d) ? d : [])).catch(() => setCourses([]))
-  }, [])
+    if (!propCourses) {
+      api.get('/api/teacher/courses').then(d => setFetchedCourses(Array.isArray(d) ? d : [])).catch(() => setFetchedCourses([]))
+    }
+  }, [propCourses])
+
+  const courses = propCourses || fetchedCourses
+
+  const PAGE_SIZE = 6
+  const totalCourses = courses?.length || 0
+  const totalPages = Math.max(1, Math.ceil(totalCourses / PAGE_SIZE))
+  const paginatedCourses = courses ? courses.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) : []
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-extrabold text-slate-800">المساقات ({courses?.length || 0})</h2>
+    <div className="space-y-6">
+      {/* Header Banner */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-brand-200/60 bg-gradient-to-br from-brand-50/60 via-white to-violet-50/40 p-6 shadow-sm">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">👋</span>
+            <h1 className="text-xl font-black text-slate-800">
+              مرحباً د. {user?.teacher?.fullname || 'المعلم'} — مساقاتي الدراسية
+            </h1>
+          </div>
+          <p className="mt-1 text-xs font-semibold text-slate-500">
+            اختر المساق لعرض الامتحانات والطلاب والتحليلات وتقارير الغش الخاصة به.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 rounded-2xl bg-white px-4 py-2.5 text-xs font-extrabold text-slate-700 shadow-sm ring-1 ring-slate-200">
+          <span>إجمالي المساقات:</span>
+          <span className="rounded-full bg-brand-600 px-2.5 py-0.5 text-white">{totalCourses}</span>
+        </div>
+      </div>
+
       {courses === null ? <Spinner /> : courses.length === 0 ? <Empty text="لا توجد مساقات مرتبطة بعد" /> : (
-        <div className="grid gap-4 md:grid-cols-2">
-          {courses.map(c => (
-            <div key={c.id} onClick={() => navigate(`/teacher/portal/courses/${c.moodle_course_id}`)} className="cursor-pointer rounded-2xl border border-slate-200/70 bg-white p-5 transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-brand-200">
-              <p className="font-extrabold text-slate-800">{c.name}</p>
-              <div className="mt-2 flex gap-4 text-xs text-slate-500">
-                <span className="font-bold">{c.exams_count || 0} امتحان</span>
-                <span className="font-bold">{c.students_count || 0} طالب</span>
-              </div>
-              {c.teachers?.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {c.teachers.map(tt => (
-                    <span key={tt.teacher_id} className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ring-1 ${tt.is_me ? 'bg-brand-50 text-brand-700 ring-brand-200' : 'bg-slate-50 text-slate-600 ring-slate-200'}`}>
-                      {tt.fullname} {tt.is_me ? '(أنت)' : ''}
-                    </span>
-                  ))}
+        <div className="space-y-6">
+          {/* Grid of 6 Cards (3x2 responsive) */}
+          <div className="grid gap-5 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+            {paginatedCourses.map((c, idx) => {
+              const paletteIndex = ((page - 1) * PAGE_SIZE + idx) % COURSE_CARD_PALETTES.length
+              const palette = COURSE_CARD_PALETTES[paletteIndex]
+              const courseTargetId = c.moodle_course_id || c.id
+
+              return (
+                <div
+                  key={c.id}
+                  onClick={() => navigate(`/teacher/portal/c/${courseTargetId}`)}
+                  className={`group relative flex flex-col justify-between overflow-hidden rounded-3xl border ${palette.border} ${palette.bg} p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl cursor-pointer`}
+                >
+                  <div className={`absolute inset-x-0 top-0 h-1.5 ${palette.accentLine}`} />
+                  
+                  <div>
+                    {/* Top Row: Icon + Course Code Badge */}
+                    <div className="flex items-center justify-between">
+                      <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-xl shadow-sm ring-1 ring-slate-100">
+                        {palette.icon}
+                      </span>
+                      <span className={`rounded-full px-3 py-1 text-[11px] font-extrabold shadow-sm ${palette.headerBadge}`}>
+                        #{courseTargetId}
+                      </span>
+                    </div>
+
+                    {/* Course Title */}
+                    <h3 className="mt-4 text-lg font-extrabold leading-snug text-slate-800 transition-colors group-hover:text-brand-600">
+                      {c.name}
+                    </h3>
+
+                    {/* Stats Badges */}
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <span className={`inline-flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-extrabold ring-1 ${palette.examBadge}`}>
+                        <span>📝</span>
+                        <span>{c.exams_count || 0} امتحانات</span>
+                      </span>
+                      <span className={`inline-flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-extrabold ring-1 ${palette.studentBadge}`}>
+                        <span>👥</span>
+                        <span>{c.students_count || 0} طالب</span>
+                      </span>
+                    </div>
+
+                    {/* Teachers List */}
+                    {c.teachers?.length > 0 && (
+                      <div className="mt-4 flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">
+                        {c.teachers.map(tt => (
+                          <span key={tt.teacher_id} className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ring-1 ${tt.is_me ? 'bg-brand-50 text-brand-700 ring-brand-200' : 'bg-slate-100 text-slate-600 ring-slate-200'}`}>
+                            {tt.fullname} {tt.is_me ? '(أنت)' : ''}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Primary CTA */}
+                  <div className="mt-6 pt-2">
+                    <button className={`w-full rounded-2xl py-3 text-xs font-extrabold transition-all duration-200 shadow-md flex items-center justify-center gap-2 group-hover:scale-[1.02] ${palette.btn}`}>
+                      <span>دخول المساق</span>
+                      <span className="transition-transform group-hover:translate-x-[-4px]">➔</span>
+                    </button>
+                  </div>
                 </div>
-              )}
+              )
+            })}
+          </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <button
+                disabled={page <= 1}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-extrabold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+              >
+                السابق
+              </button>
+              <span className="text-xs font-extrabold text-slate-600">
+                صفحة {page} من {totalPages}
+              </span>
+              <button
+                disabled={page >= totalPages}
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-extrabold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+              >
+                التالي
+              </button>
             </div>
-          ))}
+          )}
         </div>
       )}
     </div>
@@ -352,15 +502,18 @@ function CoursesList() {
 }
 
 /* ─── PAGE 4: Students List ──────────────────────────────── */
-function StudentsList() {
+function StudentsList({ courseId: propCourseId }) {
+  const params = useParams()
+  const courseId = propCourseId || params.courseId
   const [data, setData] = useState(null)
   const [q, setQ] = useState('')
   const [sort, setSort] = useState('risk_desc')
   const [risk, setRisk] = useState('all')
 
   useEffect(() => {
-    api.get('/api/teacher/students').then(setData).catch(() => setData({ students: [], totals: {} }))
-  }, [])
+    const url = '/api/teacher/students' + (courseId ? `?course_id=${courseId}` : '')
+    api.get(url).then(setData).catch(() => setData({ students: [], totals: {} }))
+  }, [courseId])
 
   const students = useMemo(() => {
     let list = data?.students || []
@@ -458,7 +611,7 @@ function ExamDetail() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <Link to="/teacher/portal/exams" className="text-xs font-extrabold text-slate-400 hover:text-slate-600">← العودة للامتحانات</Link>
+          <Link to=".." className="text-xs font-extrabold text-slate-400 hover:text-slate-600">← العودة للامتحانات</Link>
           <h2 className="mt-1 text-xl font-extrabold text-slate-800">{data.exam?.name}</h2>
           <p className="text-xs text-slate-400">{data.course?.name || '—'} · #{data.exam?.moodle_quiz_id}</p>
         </div>
@@ -601,7 +754,7 @@ function StudentDetail() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <Link to="/teacher/portal/students" className="text-xs font-extrabold text-slate-400 hover:text-slate-600">← العودة للطلاب</Link>
+          <Link to=".." className="text-xs font-extrabold text-slate-400 hover:text-slate-600">← العودة للطلاب</Link>
           <h2 className="mt-1 text-xl font-extrabold text-slate-800">{s.fullname}</h2>
           <p className="text-xs text-slate-400">{s.username} · #{s.moodle_user_id}</p>
         </div>
@@ -610,7 +763,7 @@ function StudentDetail() {
             if (window.confirm(`هل أنت متأكد من حذف بيانات الطالب "${s.fullname}" نهائياً من لوحة التحكم؟`)) {
               try {
                 await api.post(`/api/teacher/students/${id}/delete`, {})
-                navigate('/teacher/portal/students')
+                navigate('..')
               } catch (e) {
                 alert('تعذر حذف بيانات الطالب')
               }
@@ -622,9 +775,7 @@ function StudentDetail() {
         </button>
       </div>
 
-      {/* المحددات الأربعة (The 4 Pillars) */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
-        {/* المربع السلوكي (Behavioral) */}
         <div className="rounded-3xl border border-rose-200/50 bg-gradient-to-br from-rose-50 to-white p-5 shadow-sm ring-1 ring-rose-100/50 relative overflow-hidden group">
           <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-rose-500/5 transition-transform duration-500 group-hover:scale-150" />
           <div className="relative mb-4 flex items-center justify-between">
@@ -639,7 +790,6 @@ function StudentDetail() {
           </div>
         </div>
 
-        {/* مربع الذكاء الاصطناعي (AI) */}
         <div className="rounded-3xl border border-cyan-200/50 bg-gradient-to-br from-cyan-50 to-white p-5 shadow-sm ring-1 ring-cyan-100/50 relative overflow-hidden group">
           <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-cyan-500/5 transition-transform duration-500 group-hover:scale-150" />
           <div className="relative mb-4 flex items-center justify-between">
@@ -654,7 +804,6 @@ function StudentDetail() {
           </div>
         </div>
 
-        {/* مربع التشابه (Similarity) */}
         <div className="rounded-3xl border border-amber-200/50 bg-gradient-to-br from-amber-50 to-white p-5 shadow-sm ring-1 ring-amber-100/50 relative overflow-hidden group">
           <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-amber-500/5 transition-transform duration-500 group-hover:scale-150" />
           <div className="relative mb-4 flex items-center justify-between">
@@ -669,7 +818,6 @@ function StudentDetail() {
           </div>
         </div>
 
-        {/* مربع الشبكة والأجهزة (Network & Device) */}
         <div className="rounded-3xl border border-violet-200/50 bg-gradient-to-br from-violet-50 to-white p-5 shadow-sm ring-1 ring-violet-100/50 relative overflow-hidden group">
           <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-violet-500/5 transition-transform duration-500 group-hover:scale-150" />
           <div className="relative mb-4 flex items-center justify-between">
@@ -765,10 +913,124 @@ function StudentDetail() {
   )
 }
 
+/* ─── Course Workspace Header & Container (No "المساقات" Tab) ──── */
+function CourseWorkspaceHeader({ courses, activeCourseId }) {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const activeCourse = courses?.find(c => String(c.moodle_course_id) === String(activeCourseId) || String(c.id) === String(activeCourseId))
+
+  const path = location.pathname
+  const currentSubTab = 
+    path.includes('/exams') ? 'exams'
+    : path.includes('/students') ? 'students'
+    : path.includes('/network') ? 'network'
+    : path.includes('/devices') ? 'devices'
+    : path.includes('/similarity') ? 'similarity'
+    : 'dashboard'
+
+  // Sub-tabs inside course context (Notice: NO "المساقات" / Courses tab!)
+  const tabs = [
+    { key: 'dashboard', label: 'لوحة التحكم', to: `/teacher/portal/c/${activeCourseId}` },
+    { key: 'exams', label: 'الامتحانات', to: `/teacher/portal/c/${activeCourseId}/exams` },
+    { key: 'students', label: 'الطلاب', to: `/teacher/portal/c/${activeCourseId}/students` },
+    { key: 'network', label: 'الشبكات', to: `/teacher/portal/c/${activeCourseId}/network` },
+    { key: 'devices', label: 'الأجهزة', to: `/teacher/portal/c/${activeCourseId}/devices` },
+    { key: 'similarity', label: 'التشابه', to: `/teacher/portal/c/${activeCourseId}/similarity` },
+  ]
+
+  return (
+    <div className="mb-6 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-brand-200/70 bg-gradient-to-r from-brand-50/80 via-white to-violet-50/50 p-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <Link to="/teacher/portal/courses" className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-extrabold text-slate-700 shadow-sm transition-all hover:bg-slate-50 hover:text-brand-600 active:scale-[0.98]">
+            <span>←</span>
+            <span>مساقاتي</span>
+          </Link>
+          <div className="h-6 w-px bg-slate-200" />
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-base font-extrabold text-white shadow-md">📚</span>
+            <div>
+              <p className="text-[11px] font-extrabold text-brand-600">المساق النشط الحالي</p>
+              <h2 className="text-base font-extrabold text-slate-800">{activeCourse?.name || `مساق #${activeCourseId}`}</h2>
+            </div>
+          </div>
+        </div>
+
+        {courses?.length > 1 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-500">تبديل المساق:</span>
+            <select
+              value={activeCourseId}
+              onChange={(e) => {
+                const newCourseId = e.target.value
+                const subPath = currentSubTab === 'dashboard' ? '' : `/${currentSubTab}`
+                navigate(`/teacher/portal/c/${newCourseId}${subPath}`)
+              }}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-extrabold text-slate-700 outline-none focus:border-brand-500 shadow-sm"
+            >
+              {courses.map(c => (
+                <option key={c.id} value={c.moodle_course_id || c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
+      <nav className="flex gap-1.5 overflow-x-auto border-b border-slate-200 pb-2">
+        {tabs.map(tab => {
+          const isActive = currentSubTab === tab.key
+          return (
+            <Link
+              key={tab.key}
+              to={tab.to}
+              className={`whitespace-nowrap rounded-xl px-4 py-2.5 text-xs font-extrabold transition-all ${
+                isActive
+                  ? 'bg-brand-600 text-white shadow-md shadow-brand-600/20'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-800'
+              }`}
+            >
+              {tab.label}
+            </Link>
+          )
+        })}
+      </nav>
+    </div>
+  )
+}
+
+function CourseWorkspace({ courses }) {
+  const { courseId } = useParams()
+
+  return (
+    <div>
+      <CourseWorkspaceHeader courses={courses} activeCourseId={courseId} />
+      <Routes>
+        <Route index element={<TeacherAnalytics courseId={courseId} />} />
+        <Route path="exams" element={<ExamsList courseId={courseId} />} />
+        <Route path="exams/:id" element={<ExamDetail />} />
+        <Route path="students" element={<StudentsList courseId={courseId} />} />
+        <Route path="students/:id" element={<StudentDetail />} />
+        <Route path="network" element={<NetworkAnalysis courseId={courseId} />} />
+        <Route path="devices" element={<MultiDevice courseId={courseId} />} />
+        <Route path="similarity" element={<SimilarityDetection courseId={courseId} />} />
+      </Routes>
+    </div>
+  )
+}
+
 /* ─── Main Export ────────────────────────────────────────── */
 export default function TeacherPortal() {
   const { user } = useAuth()
+  const [courses, setCourses] = useState([])
   const [showTour, setShowTour] = useState(() => !localStorage.getItem('exammonitor_teacher_tour'))
+
+  useEffect(() => {
+    if (user && user.authType === 'teacher') {
+      api.get('/api/teacher/courses').then(d => setCourses(Array.isArray(d) ? d : [])).catch(() => setCourses([]))
+    }
+  }, [user])
 
   if (!user) return <Navigate to="/teacher-login" replace />
   if (user.authType !== 'teacher') return <Navigate to="/admin" replace />
@@ -785,20 +1047,23 @@ export default function TeacherPortal() {
           setShowTour(false)
         }} />
       )}
-      <Header />
+      <Header courses={courses} />
       <main className="mx-auto max-w-6xl px-5 py-8 lg:px-8">
         <Routes>
-          <Route index element={<TeacherAnalytics />} />
+          <Route index element={<Navigate to="courses" replace />} />
+          <Route path="courses" element={<CoursesList courses={courses} />} />
+          <Route path="c/:courseId/*" element={<CourseWorkspace courses={courses} />} />
+          
+          {/* Fallbacks */}
           <Route path="exams" element={<ExamsList />} />
           <Route path="exams/:id" element={<ExamDetail />} />
-          <Route path="courses" element={<CoursesList />} />
           <Route path="courses/:id" element={<CourseDetail />} />
           <Route path="students" element={<StudentsList />} />
           <Route path="students/:id" element={<StudentDetail />} />
           <Route path="network" element={<NetworkAnalysis />} />
           <Route path="devices" element={<MultiDevice />} />
           <Route path="similarity" element={<SimilarityDetection />} />
-          <Route path="*" element={<Navigate to="/teacher/portal" replace />} />
+          <Route path="*" element={<Navigate to="courses" replace />} />
         </Routes>
       </main>
     </div>

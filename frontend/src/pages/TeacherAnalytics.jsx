@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { api } from '../api'
 import StatCard from '../components/StatCard'
 import Spinner from '../components/Spinner'
@@ -70,15 +70,18 @@ function GaugeCircle({ value, max = 100, color, label }) {
   )
 }
 
-export default function TeacherAnalytics() {
+export default function TeacherAnalytics({ courseId: propCourseId }) {
+  const params = useParams()
+  const courseId = propCourseId || params.courseId
   const [data, setData] = useState(null)
   const [err, setErr] = useState('')
 
   useEffect(() => {
-    api.get('/api/teacher/analytics')
+    const url = '/api/teacher/analytics' + (courseId ? `?course_id=${courseId}` : '')
+    api.get(url)
       .then(setData)
       .catch((e) => setErr(e.message || 'تعذر تحميل البيانات'))
-  }, [])
+  }, [courseId])
 
   if (err) return <div className="rounded-2xl bg-rose-50 p-6 text-center"><p className="text-sm font-bold text-rose-600">{err}</p></div>
   if (!data) return <Spinner />
