@@ -1357,6 +1357,37 @@ final class TeacherPortalController
                 [$courseMoodleId, $courseDbId, $courseMoodleId, $courseDbId]
             );
 
+            // Fallback: if no exams found by course ID, load teacher's exams
+            if (empty($exams)) {
+                $exams = Database::fetchAll(
+                    "SELECT e.id, e.moodle_quiz_id, e.name, e.status,
+                            e.first_event_at, e.last_event_at, e.created_at,
+                            (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id)) AS students_count,
+                            (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id) AND ss.risk_level IN ('high','critical')) AS suspicious_count,
+                            (SELECT COUNT(*) FROM events ev WHERE (ev.moodle_quiz_id = e.moodle_quiz_id OR ev.moodle_quiz_id = e.id)) AS events_count
+                       FROM exams e
+                      WHERE (e.account_id = ? OR e.account_id = 0)
+                        AND (e.moodle_teacher_id = ? OR e.moodle_teacher_id IS NULL OR e.moodle_teacher_id = 0)
+                      ORDER BY e.last_event_at DESC, e.id DESC LIMIT 50",
+                    [$accountId, $teacherId]
+                );
+            }
+
+            // Fallback: if course name is still generic 'مساق #X', extract course name from events payload using first exam
+            if ((!$course || empty($course['name']) || str_starts_with($course['name'], 'مساق #')) && !empty($exams)) {
+                $firstQuizId = (int)$exams[0]['moodle_quiz_id'];
+                $evtCourseName = Database::scalar(
+                    "SELECT JSON_UNQUOTE(JSON_EXTRACT(payload, '$.moodle.course.fullname'))
+                       FROM events
+                      WHERE moodle_quiz_id = ? AND payload IS NOT NULL AND JSON_EXTRACT(payload, '$.moodle.course.fullname') IS NOT NULL
+                      LIMIT 1",
+                    [$firstQuizId]
+                );
+                if ($evtCourseName && trim((string)$evtCourseName) !== '') {
+                    $course['name'] = trim((string)$evtCourseName);
+                }
+            }
+
             foreach ($exams as &$ex) {
                 if ((int)$ex['students_count'] === 0 && (int)$ex['events_count'] > 0) {
                     $evCount = (int)Database::scalar(
