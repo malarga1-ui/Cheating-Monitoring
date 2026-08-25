@@ -41,11 +41,7 @@ if ($isProd) {
 
 set_exception_handler(function (Throwable $e) use ($isProd): void {
     error_log('[ExamMonitor] ' . $e->getMessage() . "\n" . $e->getTraceAsString());
-    if ($isProd) {
-        Response::error('خطأ داخلي في الخادم', 500);
-    } else {
-        Response::error($e->getMessage(), 500, ['trace' => $e->getTraceAsString()]);
-    }
+    Response::error('خطأ في الخادم: ' . $e->getMessage(), 500, ['trace' => $isProd ? null : $e->getTraceAsString()]);
 });
 
 // ---------------------------------------------------------------
