@@ -1012,7 +1012,7 @@ function CourseWorkspace({ courses }) {
     <div>
       <CourseWorkspaceHeader courses={courses} activeCourseId={courseId} />
       <Routes>
-        <Route index element={<TeacherAnalytics courseId={courseId} />} />
+        <Route index element={<Navigate to="exams" replace />} />
         <Route path="exams" element={<ExamsList courseId={courseId} />} />
         <Route path="exams/:id" element={<ExamDetail />} />
         <Route path="students" element={<StudentsList courseId={courseId} />} />
