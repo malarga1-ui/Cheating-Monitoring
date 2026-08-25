@@ -920,22 +920,27 @@ function CourseWorkspaceHeader({ courses, activeCourseId }) {
   const activeCourse = courses?.find(c => String(c.moodle_course_id) === String(activeCourseId) || String(c.id) === String(activeCourseId))
 
   const path = location.pathname
+  const examMatch = path.match(/\/exams\/(\d+)/)
+  const examId = examMatch ? examMatch[1] : null
+
   const currentSubTab = 
-    path.includes('/exams') ? 'exams'
-    : path.includes('/students') ? 'students'
-    : path.includes('/network') ? 'network'
+    path.includes('/network') ? 'network'
     : path.includes('/devices') ? 'devices'
     : path.includes('/similarity') ? 'similarity'
+    : path.includes('/students') ? 'students'
+    : path.includes('/exams') ? 'exams'
     : 'dashboard'
 
-  // Sub-tabs inside course context (Notice: NO "المساقات" / Courses tab!)
-  const tabs = [
-    { key: 'dashboard', label: 'لوحة التحكم', to: `/teacher/portal/c/${activeCourseId}` },
+  // If inside an exam, show exam-specific sub-tabs. If on course level, show course tabs (Exams & Course Students).
+  const tabs = examId ? [
+    { key: 'dashboard', label: 'لوحة التحكم', to: `/teacher/portal/c/${activeCourseId}/exams/${examId}` },
+    { key: 'students', label: 'طلاب الامتحان', to: `/teacher/portal/c/${activeCourseId}/exams/${examId}` },
+    { key: 'network', label: 'الشبكات', to: `/teacher/portal/c/${activeCourseId}/exams/${examId}/network` },
+    { key: 'devices', label: 'الأجهزة', to: `/teacher/portal/c/${activeCourseId}/exams/${examId}/devices` },
+    { key: 'similarity', label: 'التشابه', to: `/teacher/portal/c/${activeCourseId}/exams/${examId}/similarity` },
+  ] : [
     { key: 'exams', label: 'الامتحانات', to: `/teacher/portal/c/${activeCourseId}/exams` },
-    { key: 'students', label: 'الطلاب', to: `/teacher/portal/c/${activeCourseId}/students` },
-    { key: 'network', label: 'الشبكات', to: `/teacher/portal/c/${activeCourseId}/network` },
-    { key: 'devices', label: 'الأجهزة', to: `/teacher/portal/c/${activeCourseId}/devices` },
-    { key: 'similarity', label: 'التشابه', to: `/teacher/portal/c/${activeCourseId}/similarity` },
+    { key: 'students', label: 'طلاب المساق', to: `/teacher/portal/c/${activeCourseId}/students` },
   ]
 
   return (
