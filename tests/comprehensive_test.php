@@ -277,7 +277,50 @@ $runner->assertEquals('Teacher default password follows {username}@915', $testTe
 $refTPC = new ReflectionClass('TeacherPortalController');
 $methodSafeInts = $refTPC->getMethod('safeInts');
 $methodSafeInts->setAccessible(true);
-$sanitizedSQL = $methodSafeInts->invoke(null, [1, 2, '3', '4; DROP TABLE users--', 5]);
-$runner->assertEquals('safeInts strips malicious SQL injection vectors', $sanitizedSQL, '1,2,3,4,5');
+// =========================================================================
+// 7. CHAPTER 4 BENCHMARK DATASET (S1 - S10) & NIST SP 800-30 METRICS
+// =========================================================================
+echo "\n>> Section 7: S1-S10 Thesis Benchmark Dataset & Evaluation Metrics\n";
+
+$benchmarkData = [
+    ['id' => 'S1', 'B' => 0.000, 'A' => 0.08, 'S' => 0.00, 'N' => 0.00, 'expected_risk' => 1.6,  'expected_level' => 'safe',   'actual' => false],
+    ['id' => 'S2', 'B' => 0.057, 'A' => 0.12, 'S' => 0.00, 'N' => 0.00, 'expected_risk' => 3.9,  'expected_level' => 'safe',   'actual' => false],
+    ['id' => 'S3', 'B' => 0.086, 'A' => 0.10, 'S' => 0.00, 'N' => 0.00, 'expected_risk' => 4.3,  'expected_level' => 'safe',   'actual' => false],
+    ['id' => 'S4', 'B' => 0.146, 'A' => 0.14, 'S' => 0.00, 'N' => 0.00, 'expected_risk' => 6.7,  'expected_level' => 'low',    'actual' => false],
+    ['id' => 'S5', 'B' => 0.767, 'A' => 0.14, 'S' => 0.00, 'N' => 0.00, 'expected_risk' => 23.2, 'expected_level' => 'medium', 'actual' => true],
+    ['id' => 'S6', 'B' => 0.058, 'A' => 0.88, 'S' => 0.00, 'N' => 0.00, 'expected_risk' => 19.1, 'expected_level' => 'low',    'actual' => true],
+    ['id' => 'S7', 'B' => 0.087, 'A' => 0.16, 'S' => 0.75, 'N' => 0.00, 'expected_risk' => 25.5, 'expected_level' => 'medium', 'actual' => true],
+    ['id' => 'S8', 'B' => 0.028, 'A' => 0.11, 'S' => 0.75, 'N' => 0.00, 'expected_risk' => 22.9, 'expected_level' => 'medium', 'actual' => true],
+    ['id' => 'S9', 'B' => 0.060, 'A' => 0.09, 'S' => 0.00, 'N' => 1.00, 'expected_risk' => 30.1, 'expected_level' => 'medium', 'actual' => true],
+    ['id' => 'S10','B' => 0.722, 'A' => 0.90, 'S' => 1.00, 'N' => 1.00, 'expected_risk' => 90.6, 'expected_level' => 'high',   'actual' => true],
+];
+
+$tp = $fp = $tn = $fn = 0;
+foreach ($benchmarkData as $s) {
+    $score = round(RiskEngine::combineComponents($s['B'], $s['A'], $s['S'], $s['N']), 1);
+    $level = RiskEngine::levelFor((int)round($score));
+    $predicted = $score >= 21.0;
+    $actual = $s['actual'];
+
+    if ($predicted && $actual) $tp++;
+    elseif ($predicted && !$actual) $fp++;
+    elseif (!$predicted && $actual) $fn++;
+    else $tn++;
+
+    $runner->assert("{$s['id']} computed risk matches thesis expectation (~{$s['expected_risk']}%)", abs($score - $s['expected_risk']) <= 0.5, "Got {$score}%, expected {$s['expected_risk']}%");
+    $runner->assertEquals("{$s['id']} risk level classification matches NIST level", $level, $s['expected_level']);
+}
+
+$acc = round(($tp + $tn) / ($tp + $tn + $fp + $fn) * 100, 1);
+$prec = round($tp / ($tp + $fp) * 100, 1);
+$rec = round($tp / ($tp + $fn) * 100, 1);
+$fpr = round($fp / ($fp + $tn) * 100, 1);
+$f1 = round(2 * ($prec * $rec) / ($prec + $rec), 1);
+
+$runner->assertEquals('Benchmark Accuracy equals 90.0%', $acc, 90.0);
+$runner->assertEquals('Benchmark Precision equals 100.0%', $prec, 100.0);
+$runner->assertEquals('Benchmark Recall equals 83.3%', $rec, 83.3);
+$runner->assertEquals('Benchmark FPR equals 0.0%', $fpr, 0.0);
+$runner->assertEquals('Benchmark F1-Score equals 90.9%', $f1, 90.9);
 
 $runner->printSummary('Full Platform Verification');

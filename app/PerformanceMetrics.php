@@ -17,9 +17,10 @@ final class PerformanceMetrics
 {
     /**
      * Risk score thresholds for classification.
-     * A student is "predicted positive" (flagged) if risk_score >= threshold.
+     * Aligned with NIST SP 800-30 Moderate threshold (Table 3.2 in thesis).
+     * A student is "predicted positive" (flagged) if risk_score >= 21.
      */
-    private const FLAG_THRESHOLD = 40;
+    private const FLAG_THRESHOLD = 21;
 
     /**
      * Compute all performance metrics for a given exam.

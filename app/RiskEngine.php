@@ -207,6 +207,19 @@ final class RiskEngine
         ],
     ];
 
+    /**
+     * Directly combine the 4 normalized components into a 0-100% risk score (Eq 3.16).
+     */
+    public static function combineComponents(float $B, float $A, float $S, float $N): float
+    {
+        $wB = 4.0 / 15.0;
+        $wA = 3.0 / 15.0;
+        $wS = 4.0 / 15.0;
+        $wN = 4.0 / 15.0;
+        $score = 100.0 * ($wB * $B + $wA * $A + $wS * $S + $wN * $N);
+        return min(100.0, max(0.0, $score));
+    }
+
     /* ── Main Scoring (Eq 3.16) ────────────────────────────────── */
 
     /**
