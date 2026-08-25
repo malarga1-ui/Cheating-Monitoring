@@ -34,10 +34,7 @@ final class TeacherPortalController
                 (SELECT COUNT(DISTINCT s.id)
                    FROM students s
                   WHERE s.account_id = ?
-                    AND (
-                      s.moodle_user_id IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = ? AND cs.moodle_course_id IN ($in))
-                      OR s.id IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = ? AND cs.moodle_course_id IN ($in))
-                    )
+                    AND IF(s.moodle_user_id > 0, s.moodle_user_id, s.id) IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = ? AND cs.moodle_course_id IN ($in))
                     AND s.username NOT IN (SELECT username FROM teachers WHERE account_id = ? AND username != '')
                 ) AS students_count,
                 (SELECT COUNT(DISTINCT ss.session_id)
@@ -82,10 +79,7 @@ final class TeacherPortalController
                     (SELECT COUNT(DISTINCT s.id)
                        FROM students s
                       WHERE s.account_id = c.account_id
-                        AND (
-                          s.moodle_user_id IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = c.account_id AND cs.moodle_course_id = c.moodle_course_id)
-                          OR s.id IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = c.account_id AND cs.moodle_course_id = c.moodle_course_id)
-                        )
+                        AND IF(s.moodle_user_id > 0, s.moodle_user_id, s.id) IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = c.account_id AND cs.moodle_course_id = c.moodle_course_id)
                         AND s.username NOT IN (SELECT username FROM teachers WHERE account_id = c.account_id AND username != '')
                     ) AS students_count
                FROM courses c
@@ -1050,13 +1044,10 @@ final class TeacherPortalController
                LEFT JOIN session_summaries ss ON ss.student_id = s.id AND ss.account_id = s.account_id
                     AND ss.exam_id IN (SELECT id FROM exams WHERE account_id = ? AND moodle_course_id IN ($in))
               WHERE s.account_id = ?
-                AND (
-                  s.moodle_user_id IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = ? AND cs.moodle_course_id IN ($in))
-                  OR s.id IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = ? AND cs.moodle_course_id IN ($in))
-                )
+                AND IF(s.moodle_user_id > 0, s.moodle_user_id, s.id) IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = ? AND cs.moodle_course_id IN ($in))
                 AND s.username NOT IN (SELECT username FROM teachers WHERE account_id = ? AND username != '')
               GROUP BY s.id, s.moodle_user_id, s.fullname, s.username",
-            [$accountId, $accountId, $accountId, $accountId, $accountId]
+            [$accountId, $accountId, $accountId, $accountId]
         );
 
         if ($search !== '') {
@@ -1094,12 +1085,9 @@ final class TeacherPortalController
                LEFT JOIN session_summaries ss ON ss.student_id = s.id AND ss.account_id = s.account_id
                     AND ss.exam_id IN (SELECT id FROM exams WHERE account_id = ? AND moodle_course_id IN ($in))
               WHERE s.account_id = ?
-                AND (
-                  s.moodle_user_id IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = ? AND cs.moodle_course_id IN ($in))
-                  OR s.id IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = ? AND cs.moodle_course_id IN ($in))
-                )
+                AND IF(s.moodle_user_id > 0, s.moodle_user_id, s.id) IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = ? AND cs.moodle_course_id IN ($in))
                 AND s.username NOT IN (SELECT username FROM teachers WHERE account_id = ? AND username != '')",
-            [$accountId, $accountId, $accountId, $accountId, $accountId]
+            [$accountId, $accountId, $accountId, $accountId]
         );
 
         Response::ok([
@@ -1317,19 +1305,25 @@ final class TeacherPortalController
             $course = Database::fetchOne(
                 "SELECT c.id, c.moodle_course_id, c.name, c.created_at
                    FROM courses c
-                  WHERE (c.account_id = ? OR c.account_id = 0) AND (c.moodle_course_id = ? OR c.id = ?)
+                  WHERE c.moodle_course_id = ? OR c.id = ?
                   ORDER BY (c.account_id = ?) DESC LIMIT 1",
-                [$accountId, $courseIdParam, $courseIdParam, $accountId]
+                [$courseIdParam, $courseIdParam, $accountId]
             );
 
             $courseMoodleId = $course ? (int)$course['moodle_course_id'] : $courseIdParam;
             $courseDbId = $course ? (int)$course['id'] : $courseIdParam;
 
-            if (!$course) {
+            if (!$course || empty($course['name'])) {
+                // Try fallback from exams table
+                $examCourse = Database::fetchOne(
+                    "SELECT moodle_course_id FROM exams WHERE moodle_course_id = ? OR moodle_course_id = ? LIMIT 1",
+                    [$courseMoodleId, $courseDbId]
+                );
+                $name = $course && !empty($course['name']) ? $course['name'] : 'مساق #' . $courseMoodleId;
                 $course = [
                     'id' => $courseDbId,
                     'moodle_course_id' => $courseMoodleId,
-                    'name' => 'مساق #' . $courseMoodleId,
+                    'name' => $name,
                     'created_at' => date('Y-m-d H:i:s')
                 ];
             }
@@ -1337,20 +1331,20 @@ final class TeacherPortalController
             $exams = Database::fetchAll(
                 "SELECT e.id, e.moodle_quiz_id, e.name, e.status,
                         e.first_event_at, e.last_event_at, e.created_at,
-                        (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id) AND (ss.account_id = e.account_id OR ss.account_id = 0)) AS students_count,
-                        (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id) AND (ss.account_id = e.account_id OR ss.account_id = 0) AND ss.risk_level IN ('high','critical')) AS suspicious_count,
-                        (SELECT COUNT(*) FROM events ev WHERE (ev.moodle_quiz_id = e.moodle_quiz_id OR ev.moodle_quiz_id = e.id) AND (ev.account_id = e.account_id OR ev.account_id = 0)) AS events_count
+                        (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id)) AS students_count,
+                        (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id) AND ss.risk_level IN ('high','critical')) AS suspicious_count,
+                        (SELECT COUNT(*) FROM events ev WHERE (ev.moodle_quiz_id = e.moodle_quiz_id OR ev.moodle_quiz_id = e.id)) AS events_count
                    FROM exams e
-                  WHERE (e.account_id = ? OR e.account_id = 0) AND (e.moodle_course_id = ? OR e.moodle_course_id = ?)
-                  ORDER BY e.last_event_at DESC",
-                [$accountId, $courseMoodleId, $courseDbId]
+                  WHERE e.moodle_course_id = ? OR e.moodle_course_id = ?
+                  ORDER BY e.last_event_at DESC, e.id DESC",
+                [$courseMoodleId, $courseDbId]
             );
 
             foreach ($exams as &$ex) {
                 if ((int)$ex['students_count'] === 0 && (int)$ex['events_count'] > 0) {
                     $evCount = (int)Database::scalar(
-                        'SELECT COUNT(DISTINCT moodle_user_id) FROM events WHERE moodle_quiz_id = ? AND (account_id = ? OR account_id = 0)',
-                        [(int)$ex['moodle_quiz_id'], $accountId]
+                        'SELECT COUNT(DISTINCT moodle_user_id) FROM events WHERE moodle_quiz_id = ? OR moodle_quiz_id = ?',
+                        [(int)$ex['moodle_quiz_id'], (int)$ex['id']]
                     );
                     $ex['students_count'] = $evCount;
                 }
@@ -1360,9 +1354,9 @@ final class TeacherPortalController
             $coTeachers = Database::fetchAll(
                 "SELECT t.moodle_teacher_id AS teacher_id, t.fullname, t.username
                    FROM course_teachers ct
-                   JOIN teachers t ON t.moodle_teacher_id = ct.moodle_teacher_id AND (t.account_id = ct.account_id OR t.account_id = 0)
-                  WHERE (ct.account_id = ? OR ct.account_id = 0) AND (ct.moodle_course_id = ? OR ct.moodle_course_id = ?)",
-                [$accountId, $courseMoodleId, $courseDbId]
+                   JOIN teachers t ON t.moodle_teacher_id = ct.moodle_teacher_id
+                  WHERE ct.moodle_course_id = ? OR ct.moodle_course_id = ?",
+                [$courseMoodleId, $courseDbId]
             );
 
             // 1. Primary: load enrolled students from course_students
@@ -1393,10 +1387,7 @@ final class TeacherPortalController
                         ), 'safe') AS risk_level
                    FROM students s
                   WHERE (s.account_id = ? OR s.account_id = 0)
-                    AND (
-                      s.moodle_user_id IN (SELECT cs.student_id FROM course_students cs WHERE (cs.account_id = ? OR cs.account_id = 0) AND (cs.moodle_course_id = ? OR cs.moodle_course_id = ?))
-                      OR s.id IN (SELECT cs.student_id FROM course_students cs WHERE (cs.account_id = ? OR cs.account_id = 0) AND (cs.moodle_course_id = ? OR cs.moodle_course_id = ?))
-                    )
+                    AND IF(s.moodle_user_id > 0, s.moodle_user_id, s.id) IN (SELECT cs.student_id FROM course_students cs WHERE (cs.account_id = ? OR cs.account_id = 0) AND (cs.moodle_course_id = ? OR cs.moodle_course_id = ?))
                     AND s.username NOT IN (SELECT username FROM teachers WHERE (account_id = ? OR account_id = 0) AND username != '')
                   ORDER BY s.fullname ASC",
                 [
@@ -1404,7 +1395,6 @@ final class TeacherPortalController
                     $accountId, $courseMoodleId, $courseDbId,
                     $accountId, $courseMoodleId, $courseDbId,
                     $accountId,
-                    $accountId, $courseMoodleId, $courseDbId,
                     $accountId, $courseMoodleId, $courseDbId,
                     $accountId
                 ]
