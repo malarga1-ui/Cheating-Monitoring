@@ -32,14 +32,24 @@ export default function Login() {
     api
       .get('/api/public/sites')
       .then((rows) => {
-        setSites(Array.isArray(rows) ? rows : [])
-        if (rows.length === 1) {
-          setAccountId(String(rows[0].id))
-          setSiteName(rows[0].org_name)
+        const list = Array.isArray(rows) && rows.length > 0 ? rows : [
+          { id: 1, org_name: 'الجامعة الإسلامية بغزة', site_domain: '' }
+        ]
+        setSites(list)
+        setSitesError('')
+        if (list.length === 1) {
+          setAccountId(String(list[0].id))
+          setSiteName(list[0].org_name)
           setTStep(1)
         }
       })
-      .catch(() => setSitesError('تعذر تحميل قائمة الجامعات'))
+      .catch(() => {
+        const fallback = [{ id: 1, org_name: 'الجامعة الإسلامية بغزة', site_domain: '' }]
+        setSites(fallback)
+        setAccountId('1')
+        setSiteName('الجامعة الإسلامية بغزة')
+        setTStep(1)
+      })
   }, [])
 
   useEffect(() => {
