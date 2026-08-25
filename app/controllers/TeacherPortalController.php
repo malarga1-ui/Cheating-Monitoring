@@ -20,6 +20,10 @@ final class TeacherPortalController
         $teacherId = Auth::teacherId();
 
         $ids = Teachers::courseIds($accountId, $teacherId);
+        $courseId = (int)($_GET['course_id'] ?? 0);
+        if ($courseId > 0 && in_array($courseId, $ids, true)) {
+            $ids = [$courseId];
+        }
         if ($ids === []) {
             Response::ok(self::emptySummary());
             return;
@@ -127,6 +131,10 @@ final class TeacherPortalController
         $teacherId = Auth::teacherId();
 
         $ids = Teachers::courseIds($accountId, $teacherId);
+        $courseId = (int)($_GET['course_id'] ?? 0);
+        if ($courseId > 0 && in_array($courseId, $ids, true)) {
+            $ids = [$courseId];
+        }
         if ($ids === []) {
             Response::ok([]);
             return;
@@ -377,6 +385,10 @@ final class TeacherPortalController
         $teacherId = Auth::teacherId();
 
         $ids = Teachers::courseIds($accountId, $teacherId);
+        $courseId = (int)($_GET['course_id'] ?? 0);
+        if ($courseId > 0 && in_array($courseId, $ids, true)) {
+            $ids = [$courseId];
+        }
         if ($ids === []) {
             Response::ok(self::emptyAnalytics());
             return;
@@ -857,6 +869,10 @@ final class TeacherPortalController
         $accountId = Auth::accountId();
         $isAdmin = Auth::isOwner();
         $ids = $isAdmin ? self::allCourseIds($accountId) : Teachers::courseIds($accountId, Auth::teacherId());
+        $courseId = (int)($_GET['course_id'] ?? 0);
+        if ($courseId > 0 && in_array($courseId, $ids, true)) {
+            $ids = [$courseId];
+        }
         if ($ids === []) { Response::ok([]); return; }
         $in = self::safeInts($ids);
 
@@ -902,6 +918,10 @@ final class TeacherPortalController
         $accountId = Auth::accountId();
         $isAdmin = Auth::isOwner();
         $ids = $isAdmin ? self::allCourseIds($accountId) : Teachers::courseIds($accountId, Auth::teacherId());
+        $courseId = (int)($_GET['course_id'] ?? 0);
+        if ($courseId > 0 && in_array($courseId, $ids, true)) {
+            $ids = [$courseId];
+        }
         if ($ids === []) { Response::ok([]); return; }
         $in = self::safeInts($ids);
 
@@ -961,6 +981,10 @@ final class TeacherPortalController
         $accountId = Auth::accountId();
         $isAdmin = Auth::isOwner();
         $ids = $isAdmin ? self::allCourseIds($accountId) : Teachers::courseIds($accountId, Auth::teacherId());
+        $courseId = (int)($_GET['course_id'] ?? 0);
+        if ($courseId > 0 && in_array($courseId, $ids, true)) {
+            $ids = [$courseId];
+        }
         if ($ids === []) { Response::ok([]); return; }
         $in = self::safeInts($ids);
 
@@ -1020,6 +1044,10 @@ final class TeacherPortalController
         $teacherId = Auth::teacherId();
 
         $ids = Teachers::courseIds($accountId, $teacherId);
+        $courseId = (int)($_GET['course_id'] ?? 0);
+        if ($courseId > 0 && in_array($courseId, $ids, true)) {
+            $ids = [$courseId];
+        }
         if ($ids === []) { Response::ok(['students' => [], 'totals' => self::emptyStudentTotals()]); return; }
         $in = self::safeInts($ids);
 
@@ -1304,47 +1332,35 @@ final class TeacherPortalController
         // Incrementally aggregate any pending events
         try { Aggregator::process(500); } catch (\Throwable $e) {}
 
-        try {
-            // Find course by moodle_course_id OR internal database id
-            $course = Database::fetchOne(
-                "SELECT c.id, c.moodle_course_id, c.name, c.created_at
-                   FROM courses c
-                  WHERE c.moodle_course_id = ? OR c.id = ?
-                  ORDER BY (c.account_id = ?) DESC LIMIT 1",
-                [$courseIdParam, $courseIdParam, $accountId]
-            );
+        // 1. Load course info
+        $course = Database::fetchOne(
+            "SELECT c.id, c.moodle_course_id, c.name, c.created_at
+               FROM courses c
+              WHERE c.moodle_course_id = ? OR c.id = ?
+              ORDER BY (c.account_id = ?) DESC LIMIT 1",
+            [$courseIdParam, $courseIdParam, $accountId]
+        );
 
-            $courseMoodleId = $course ? (int)$course['moodle_course_id'] : $courseIdParam;
-            $courseDbId = $course ? (int)$course['id'] : $courseIdParam;
+        $courseMoodleId = $course ? (int)$course['moodle_course_id'] : $courseIdParam;
+        $courseDbId = $course ? (int)$course['id'] : $courseIdParam;
 
-            if (!$course || empty($course['name']) || str_starts_with($course['name'], 'مساق #')) {
-                // Try finding course name from events payload
-                $evtName = Database::scalar(
-                    "SELECT JSON_UNQUOTE(JSON_EXTRACT(payload, '$.moodle.course.fullname'))
-                       FROM events
-                      WHERE (moodle_course_id = ? OR moodle_course_id = ?)
-                        AND payload IS NOT NULL AND JSON_EXTRACT(payload, '$.moodle.course.fullname') IS NOT NULL
-                      LIMIT 1",
-                    [$courseMoodleId, $courseDbId]
-                );
-                if ($evtName && trim((string)$evtName) !== '') {
-                    $name = trim((string)$evtName);
-                    Database::execute(
-                        'INSERT INTO courses (account_id, moodle_course_id, name) VALUES (?, ?, ?)
-                         ON DUPLICATE KEY UPDATE name = IF(name = "" OR name LIKE "مساق #%", VALUES(name), name)',
-                        [$accountId, $courseMoodleId, $name]
-                    );
-                } else {
-                    $name = ($course && !empty($course['name'])) ? $course['name'] : 'مساق #' . $courseMoodleId;
-                }
-                $course = [
-                    'id' => $courseDbId,
-                    'moodle_course_id' => $courseMoodleId,
-                    'name' => $name,
-                    'created_at' => date('Y-m-d H:i:s')
-                ];
-            }
+        $name = ($course && !empty($course['name'])) ? $course['name'] : '';
 
+        // 2. Load exams for this course
+        $exams = Database::fetchAll(
+            "SELECT e.id, e.moodle_quiz_id, e.name, e.status,
+                    e.first_event_at, e.last_event_at, e.created_at,
+                    (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id)) AS students_count,
+                    (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id) AND ss.risk_level IN ('high','critical')) AS suspicious_count,
+                    (SELECT COUNT(*) FROM events ev WHERE (ev.moodle_quiz_id = e.moodle_quiz_id OR ev.moodle_quiz_id = e.id)) AS events_count
+               FROM exams e
+              WHERE e.moodle_course_id = ? OR e.moodle_course_id = ? OR e.moodle_quiz_id = ? OR e.id = ?
+              ORDER BY e.last_event_at DESC, e.id DESC",
+            [$courseMoodleId, $courseDbId, $courseMoodleId, $courseDbId]
+        );
+
+        // Fallback: if no exams found by course ID, load teacher's exams
+        if (empty($exams)) {
             $exams = Database::fetchAll(
                 "SELECT e.id, e.moodle_quiz_id, e.name, e.status,
                         e.first_event_at, e.last_event_at, e.created_at,
@@ -1352,193 +1368,100 @@ final class TeacherPortalController
                         (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id) AND ss.risk_level IN ('high','critical')) AS suspicious_count,
                         (SELECT COUNT(*) FROM events ev WHERE (ev.moodle_quiz_id = e.moodle_quiz_id OR ev.moodle_quiz_id = e.id)) AS events_count
                    FROM exams e
-                  WHERE e.moodle_course_id = ? OR e.moodle_course_id = ? OR e.moodle_quiz_id = ? OR e.id = ?
-                  ORDER BY e.last_event_at DESC, e.id DESC",
-                [$courseMoodleId, $courseDbId, $courseMoodleId, $courseDbId]
+                  WHERE (e.account_id = ? OR e.account_id = 0)
+                    AND (e.moodle_teacher_id = ? OR e.moodle_teacher_id IS NULL OR e.moodle_teacher_id = 0)
+                  ORDER BY e.last_event_at DESC, e.id DESC LIMIT 50",
+                [$accountId, $teacherId]
             );
-
-            // Fallback: if no exams found by course ID, load teacher's exams
-            if (empty($exams)) {
-                $exams = Database::fetchAll(
-                    "SELECT e.id, e.moodle_quiz_id, e.name, e.status,
-                            e.first_event_at, e.last_event_at, e.created_at,
-                            (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id)) AS students_count,
-                            (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id) AND ss.risk_level IN ('high','critical')) AS suspicious_count,
-                            (SELECT COUNT(*) FROM events ev WHERE (ev.moodle_quiz_id = e.moodle_quiz_id OR ev.moodle_quiz_id = e.id)) AS events_count
-                       FROM exams e
-                      WHERE (e.account_id = ? OR e.account_id = 0)
-                        AND (e.moodle_teacher_id = ? OR e.moodle_teacher_id IS NULL OR e.moodle_teacher_id = 0)
-                      ORDER BY e.last_event_at DESC, e.id DESC LIMIT 50",
-                    [$accountId, $teacherId]
-                );
-            }
-
-            // Fallback: if course name is still generic 'مساق #X', extract course name from events payload using first exam
-            if ((!$course || empty($course['name']) || str_starts_with($course['name'], 'مساق #')) && !empty($exams)) {
-                $firstQuizId = (int)$exams[0]['moodle_quiz_id'];
-                $evtCourseName = Database::scalar(
-                    "SELECT JSON_UNQUOTE(JSON_EXTRACT(payload, '$.moodle.course.fullname'))
-                       FROM events
-                      WHERE moodle_quiz_id = ? AND payload IS NOT NULL AND JSON_EXTRACT(payload, '$.moodle.course.fullname') IS NOT NULL
-                      LIMIT 1",
-                    [$firstQuizId]
-                );
-                if ($evtCourseName && trim((string)$evtCourseName) !== '') {
-                    $course['name'] = trim((string)$evtCourseName);
-                }
-            }
-
-            foreach ($exams as &$ex) {
-                if ((int)$ex['students_count'] === 0 && (int)$ex['events_count'] > 0) {
-                    $evCount = (int)Database::scalar(
-                        'SELECT COUNT(DISTINCT moodle_user_id) FROM events WHERE moodle_quiz_id = ? OR moodle_quiz_id = ?',
-                        [(int)$ex['moodle_quiz_id'], (int)$ex['id']]
-                    );
-                    $ex['students_count'] = $evCount;
-                }
-            }
-            unset($ex);
-
-            $coTeachers = Database::fetchAll(
-                "SELECT t.moodle_teacher_id AS teacher_id, t.fullname, t.username
-                   FROM course_teachers ct
-                   JOIN teachers t ON t.moodle_teacher_id = ct.moodle_teacher_id
-                  WHERE ct.moodle_course_id = ? OR ct.moodle_course_id = ?",
-                [$courseMoodleId, $courseDbId]
-            );
-
-            // 1. Primary: load enrolled students from course_students
-            $students = Database::fetchAll(
-                "SELECT s.id AS student_id, s.moodle_user_id, s.fullname, s.username,
-                        (SELECT COUNT(DISTINCT ss.exam_id)
-                           FROM session_summaries ss
-                           JOIN exams e ON (e.id = ss.exam_id OR e.moodle_quiz_id = ss.exam_id)
-                          WHERE (ss.student_id = s.id OR ss.student_id = s.moodle_user_id)
-                            AND (ss.account_id = ? OR ss.account_id = 0)
-                            AND (e.moodle_course_id = ? OR e.moodle_course_id = ?)
-                        ) AS exams_count,
-                        COALESCE((
-                           SELECT MAX(ss.risk_score)
-                             FROM session_summaries ss
-                             JOIN exams e ON (e.id = ss.exam_id OR e.moodle_quiz_id = ss.exam_id)
-                            WHERE (ss.student_id = s.id OR ss.student_id = s.moodle_user_id)
-                              AND (ss.account_id = ? OR ss.account_id = 0)
-                              AND (e.moodle_course_id = ? OR e.moodle_course_id = ?)
-                        ), 0) AS risk_score,
-                        COALESCE((
-                           SELECT MAX(ss.risk_level)
-                             FROM session_summaries ss
-                             JOIN exams e ON (e.id = ss.exam_id OR e.moodle_quiz_id = ss.exam_id)
-                            WHERE (ss.student_id = s.id OR ss.student_id = s.moodle_user_id)
-                              AND (ss.account_id = ? OR ss.account_id = 0)
-                              AND (e.moodle_course_id = ? OR e.moodle_course_id = ?)
-                        ), 'safe') AS risk_level
-                   FROM students s
-                  WHERE (s.account_id = ? OR s.account_id = 0)
-                    AND IF(s.moodle_user_id > 0, s.moodle_user_id, s.id) IN (SELECT cs.student_id FROM course_students cs WHERE (cs.account_id = ? OR cs.account_id = 0) AND (cs.moodle_course_id = ? OR cs.moodle_course_id = ?))
-                    AND s.username NOT IN (SELECT username FROM teachers WHERE (account_id = ? OR account_id = 0) AND username != '')
-                  ORDER BY s.fullname ASC",
-                [
-                    $accountId, $courseMoodleId, $courseDbId,
-                    $accountId, $courseMoodleId, $courseDbId,
-                    $accountId, $courseMoodleId, $courseDbId,
-                    $accountId,
-                    $accountId, $courseMoodleId, $courseDbId,
-                    $accountId
-                ]
-            );
-
-            // 2. Fallback: if course_students is empty, load from session_summaries/events
-            if (empty($students)) {
-                $students = Database::fetchAll(
-                    "SELECT s.id AS student_id, s.moodle_user_id, s.fullname, s.username,
-                            COUNT(DISTINCT ss.exam_id) AS exams_count,
-                            COALESCE(MAX(ss.risk_score), 0) AS risk_score,
-                            COALESCE(MAX(ss.risk_level), 'safe') AS risk_level
-                       FROM students s
-                       JOIN session_summaries ss ON (s.id = ss.student_id OR s.moodle_user_id = ss.student_id)
-                       JOIN exams e ON (e.id = ss.exam_id OR e.moodle_quiz_id = ss.exam_id)
-                      WHERE (ss.account_id = ? OR ss.account_id = 0)
-                        AND (e.moodle_course_id = ? OR e.moodle_course_id = ?)
-                      GROUP BY s.id, s.moodle_user_id, s.fullname, s.username",
-                    [$accountId, $courseMoodleId, $courseDbId]
-                );
-            }
-
-            if (empty($students)) {
-                $students = Database::fetchAll(
-                    "SELECT e.moodle_user_id AS student_id,
-                            e.moodle_user_id,
-                            COALESCE(MAX(st.fullname), MAX(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.student.fullname'))), CONCAT('طالب #', e.moodle_user_id)) AS fullname,
-                            COALESCE(MAX(st.username), MAX(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.student.username'))), '') AS username,
-                            COUNT(DISTINCT e.moodle_quiz_id) AS exams_count,
-                            0 AS risk_score,
-                            'safe' AS risk_level
-                       FROM events e
-                       LEFT JOIN students st ON (st.moodle_user_id = e.moodle_user_id AND (st.account_id = e.account_id OR st.account_id = 0))
-                      WHERE (e.account_id = ? OR e.account_id = 0)
-                        AND (e.moodle_course_id = ? OR e.moodle_course_id = ?)
-                        AND e.moodle_user_id > 0
-                      GROUP BY e.moodle_user_id",
-                    [$accountId, $courseMoodleId, $courseDbId]
-                );
-            }
-
-            usort($students, function ($a, $b) {
-                $aTook = ((int)$a['exams_count'] > 0) ? 1 : 0;
-                $bTook = ((int)$b['exams_count'] > 0) ? 1 : 0;
-                if ($aTook !== $bTook) return $bTook <=> $aTook;
-                
-                $aRisk = (int)($a['risk_score'] ?? 0);
-                $bRisk = (int)($b['risk_score'] ?? 0);
-                if ($aRisk !== $bRisk) return $bRisk <=> $aRisk;
-                
-                return mb_strcmp($a['fullname'] ?? '', $b['fullname'] ?? '');
-            });
-
-            Response::ok([
-                'course' => [
-                    'id'                => (int)$course['id'],
-                    'moodle_course_id'  => (int)$course['moodle_course_id'],
-                    'name'              => $course['name'],
-                ],
-                'exams' => array_map(fn($e) => [
-                    'id'               => (int)$e['id'],
-                    'moodle_quiz_id'   => (int)$e['moodle_quiz_id'],
-                    'name'             => $e['name'],
-                    'status'           => $e['status'],
-                    'first_event_at'   => $e['first_event_at'],
-                    'last_event_at'    => $e['last_event_at'],
-                    'students_count'   => (int)$e['students_count'],
-                    'suspicious_count' => (int)$e['suspicious_count'],
-                    'events_count'     => (int)$e['events_count'],
-                ], $exams),
-                'teachers' => array_map(fn($t) => [
-                    'teacher_id' => (int)$t['teacher_id'],
-                    'fullname'   => $t['fullname'],
-                    'username'   => $t['username'],
-                    'is_me'      => (int)$t['teacher_id'] === $teacherId,
-                ], $coTeachers),
-                'students' => array_map(fn($s) => [
-                    'id'           => (int)$s['student_id'],
-                    'student_id'   => (int)$s['student_id'],
-                    'moodle_user_id'=> (int)$s['moodle_user_id'],
-                    'fullname'     => (string)$s['fullname'],
-                    'username'     => (string)$s['username'],
-                    'exams_count'  => (int)$s['exams_count'],
-                    'risk_score'   => (int)($s['risk_score'] ?? 0),
-                    'risk_level'   => (string)($s['risk_level'] ?? 'safe'),
-                ], $students),
-            ]);
-        } catch (\Throwable $e) {
-            error_log('[CourseDetailError] ' . $e->getMessage());
-            Response::ok([
-                'course' => ['id' => $courseIdParam, 'moodle_course_id' => $courseIdParam, 'name' => 'مساق #' . $courseIdParam],
-                'exams' => [],
-                'teachers' => [],
-                'students' => [],
-            ]);
         }
+
+        // Fix student counts
+        foreach ($exams as &$ex) {
+            if ((int)$ex['students_count'] === 0 && (int)$ex['events_count'] > 0) {
+                $evCount = (int)Database::scalar(
+                    'SELECT COUNT(DISTINCT moodle_user_id) FROM events WHERE moodle_quiz_id = ? OR moodle_quiz_id = ?',
+                    [(int)$ex['moodle_quiz_id'], (int)$ex['id']]
+                );
+                $ex['students_count'] = $evCount;
+            }
+        }
+        unset($ex);
+
+        // Fallback course name if missing
+        if ($name === '' || str_starts_with($name, 'مساق #')) {
+            if (!empty($exams) && !empty($exams[0]['name'])) {
+                $name = $exams[0]['name'];
+            } else {
+                $name = 'مساق #' . $courseMoodleId;
+            }
+        }
+
+        $courseObj = [
+            'id' => $courseDbId,
+            'moodle_course_id' => $courseMoodleId,
+            'name' => $name,
+            'created_at' => $course['created_at'] ?? date('Y-m-d H:i:s'),
+        ];
+
+        // Load co-teachers
+        $coTeachers = Database::fetchAll(
+            "SELECT DISTINCT t.moodle_teacher_id AS teacher_id, t.fullname, t.username
+               FROM course_teachers ct
+               JOIN teachers t ON t.moodle_teacher_id = ct.moodle_teacher_id
+              WHERE ct.moodle_course_id = ? OR ct.moodle_course_id = ?",
+            [$courseMoodleId, $courseDbId]
+        );
+
+        // Load students
+        $students = Database::fetchAll(
+            "SELECT s.id AS student_id, s.moodle_user_id, s.fullname, s.username,
+                    COUNT(DISTINCT ss.exam_id) AS exams_count,
+                    COALESCE(MAX(ss.risk_score), 0) AS risk_score,
+                    COALESCE(MAX(ss.risk_level), 'safe') AS risk_level
+               FROM students s
+               LEFT JOIN session_summaries ss ON (s.id = ss.student_id OR s.moodle_user_id = ss.student_id)
+               LEFT JOIN exams e ON (e.id = ss.exam_id OR e.moodle_quiz_id = ss.exam_id)
+              WHERE (s.account_id = ? OR s.account_id = 0)
+                AND s.username NOT IN (SELECT username FROM teachers WHERE (account_id = ? OR account_id = 0) AND username != '')
+              GROUP BY s.id, s.moodle_user_id, s.fullname, s.username
+              ORDER BY s.fullname ASC",
+            [$accountId, $accountId]
+        );
+
+        Response::ok([
+            'course' => [
+                'id'                => (int)$courseObj['id'],
+                'moodle_course_id'  => (int)$courseObj['moodle_course_id'],
+                'name'              => (string)$courseObj['name'],
+            ],
+            'exams' => array_map(fn($e) => [
+                'id'               => (int)$e['id'],
+                'moodle_quiz_id'   => (int)$e['moodle_quiz_id'],
+                'name'             => $e['name'],
+                'status'           => $e['status'],
+                'first_event_at'   => $e['first_event_at'],
+                'last_event_at'    => $e['last_event_at'],
+                'students_count'   => (int)$e['students_count'],
+                'suspicious_count' => (int)$e['suspicious_count'],
+                'events_count'     => (int)$e['events_count'],
+            ], $exams),
+            'teachers' => array_map(fn($t) => [
+                'teacher_id' => (int)$t['teacher_id'],
+                'fullname'   => $t['fullname'],
+                'username'   => $t['username'],
+                'is_me'      => (int)$t['teacher_id'] === $teacherId,
+            ], $coTeachers),
+            'students' => array_map(fn($s) => [
+                'id'           => (int)$s['student_id'],
+                'student_id'   => (int)$s['student_id'],
+                'moodle_user_id'=> (int)$s['moodle_user_id'],
+                'fullname'     => (string)$s['fullname'],
+                'username'     => (string)$s['username'],
+                'exams_count'  => (int)$s['exams_count'],
+                'risk_score'   => (int)($s['risk_score'] ?? 0),
+                'risk_level'   => (string)($s['risk_level'] ?? 'safe'),
+            ], $students),
+        ]);
     }
 
     /** Return all course IDs for an account (owner/admin use). */
