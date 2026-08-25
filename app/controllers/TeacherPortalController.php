@@ -298,7 +298,7 @@ final class TeacherPortalController
         $teacherId = Auth::teacherId();
 
         // Incrementally aggregate any pending events
-        try { Aggregator::process(500); } catch (\Throwable $e) {}
+        try { Aggregator::process(2000); } catch (\Throwable $e) {}
 
         try {
             self::ownedExam($id, $accountId, $teacherId);
@@ -309,6 +309,10 @@ final class TeacherPortalController
 
         try {
             $students = Analytics::examStudents($id, $accountId);
+            if (empty($students)) {
+                try { Aggregator::process(5000); } catch (\Throwable $e) {}
+                $students = Analytics::examStudents($id, $accountId);
+            }
         } catch (\Throwable $e) {
             $students = [];
         }
@@ -1313,13 +1317,26 @@ final class TeacherPortalController
             $courseMoodleId = $course ? (int)$course['moodle_course_id'] : $courseIdParam;
             $courseDbId = $course ? (int)$course['id'] : $courseIdParam;
 
-            if (!$course || empty($course['name'])) {
-                // Try fallback from exams table
-                $examCourse = Database::fetchOne(
-                    "SELECT moodle_course_id FROM exams WHERE moodle_course_id = ? OR moodle_course_id = ? LIMIT 1",
+            if (!$course || empty($course['name']) || str_starts_with($course['name'], 'مساق #')) {
+                // Try finding course name from events payload
+                $evtName = Database::scalar(
+                    "SELECT JSON_UNQUOTE(JSON_EXTRACT(payload, '$.moodle.course.fullname'))
+                       FROM events
+                      WHERE (moodle_course_id = ? OR moodle_course_id = ?)
+                        AND payload IS NOT NULL AND JSON_EXTRACT(payload, '$.moodle.course.fullname') IS NOT NULL
+                      LIMIT 1",
                     [$courseMoodleId, $courseDbId]
                 );
-                $name = $course && !empty($course['name']) ? $course['name'] : 'مساق #' . $courseMoodleId;
+                if ($evtName && trim((string)$evtName) !== '') {
+                    $name = trim((string)$evtName);
+                    Database::execute(
+                        'INSERT INTO courses (account_id, moodle_course_id, name) VALUES (?, ?, ?)
+                         ON DUPLICATE KEY UPDATE name = IF(name = "" OR name LIKE "مساق #%", VALUES(name), name)',
+                        [$accountId, $courseMoodleId, $name]
+                    );
+                } else {
+                    $name = ($course && !empty($course['name'])) ? $course['name'] : 'مساق #' . $courseMoodleId;
+                }
                 $course = [
                     'id' => $courseDbId,
                     'moodle_course_id' => $courseMoodleId,
@@ -1335,9 +1352,9 @@ final class TeacherPortalController
                         (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id) AND ss.risk_level IN ('high','critical')) AS suspicious_count,
                         (SELECT COUNT(*) FROM events ev WHERE (ev.moodle_quiz_id = e.moodle_quiz_id OR ev.moodle_quiz_id = e.id)) AS events_count
                    FROM exams e
-                  WHERE e.moodle_course_id = ? OR e.moodle_course_id = ?
+                  WHERE e.moodle_course_id = ? OR e.moodle_course_id = ? OR e.moodle_quiz_id = ? OR e.id = ?
                   ORDER BY e.last_event_at DESC, e.id DESC",
-                [$courseMoodleId, $courseDbId]
+                [$courseMoodleId, $courseDbId, $courseMoodleId, $courseDbId]
             );
 
             foreach ($exams as &$ex) {
