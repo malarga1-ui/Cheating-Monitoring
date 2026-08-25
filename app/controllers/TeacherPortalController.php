@@ -1719,6 +1719,15 @@ final class TeacherPortalController
             Teachers::setDefaultPassword($uname, $teacherId, $accountId);
         }
 
+        // Clean up stale students who have no events and were un-enrolled
+        Database::execute(
+            'DELETE FROM course_students 
+              WHERE account_id = ? 
+                AND (student_name LIKE "mah_student%" OR student_name LIKE "mahmoud_% alarja")
+                AND student_id NOT IN (SELECT DISTINCT moodle_user_id FROM events WHERE account_id = ? AND moodle_user_id > 0)',
+            [$accountId, $accountId]
+        );
+
         // Run the aggregator synchronously so the teacher sees live data immediately
         $aggResult = Aggregator::process(2000);
 
