@@ -110,10 +110,21 @@ final class Analytics
                     $risk = ['score' => 0, 'level' => 'safe', 'contributions' => []];
                 }
 
+                $fullname = (string)($r['fullname'] ?? '');
+                $username = (string)($r['username'] ?? '');
+                $sid = (int)($r['student_id'] ?? 0);
+                if (($fullname === '' || str_starts_with($fullname, 'طالب #')) && $sid > 0) {
+                    $stInfo = Database::fetchOne('SELECT fullname, username FROM students WHERE (moodle_user_id = ? OR id = ?) AND (account_id = ? OR account_id = 0) LIMIT 1', [$sid, $sid, $accountId]);
+                    if ($stInfo && !empty($stInfo['fullname'])) {
+                        $fullname = $stInfo['fullname'];
+                        $username = $stInfo['username'] ?? $username;
+                    }
+                }
+
                 $students[] = [
-                    'student_id' => (int)$r['student_id'],
-                    'fullname' => $r['fullname'],
-                    'username' => $r['username'],
+                    'student_id' => $sid,
+                    'fullname' => $fullname !== '' ? $fullname : 'طالب #' . $sid,
+                    'username' => $username,
                     'sessions_count' => (int)$r['sessions_count'],
                     'event_count' => (int)$r['event_count'],
                     'tab_hidden_count' => (int)$r['tab_hidden_count'],

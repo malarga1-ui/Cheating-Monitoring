@@ -325,14 +325,24 @@ final class TeacherPortalController
             $students = [];
         }
 
-        $risk = (string)($_GET['risk'] ?? '');
+        $risk = strtolower(trim((string)($_GET['risk'] ?? '')));
         $search = trim((string)($_GET['q'] ?? ''));
         $sort = (string)($_GET['sort'] ?? 'risk_desc');
         $page = max(1, (int)($_GET['page'] ?? 1));
         $limit = min(200, max(10, (int)($_GET['limit'] ?? 50)));
 
-        if ($risk !== '' && $risk !== 'all') {
-            $students = array_values(array_filter($students, fn($s) => $s['risk_level'] === $risk));
+        if ($risk !== '' && $risk !== 'all' && $risk !== 'any') {
+            $filtered = array_values(array_filter($students, function($s) use ($risk) {
+                $lvl = strtolower((string)($s['risk_level'] ?? 'safe'));
+                if ($risk === 'suspicious' || $risk === 'flagged') {
+                    return in_array($lvl, ['medium', 'high', 'critical'], true) || ((int)($s['risk_score'] ?? 0) >= 20);
+                }
+                return $lvl === $risk;
+            }));
+            // Only apply filter if it doesn't accidentally wipe out all students when risk filter is loose
+            if (!empty($filtered) || $risk === 'critical' || $risk === 'high') {
+                $students = $filtered;
+            }
         }
         if ($search !== '') {
             $students = array_values(array_filter(
