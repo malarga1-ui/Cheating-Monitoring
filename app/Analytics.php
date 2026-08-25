@@ -12,9 +12,9 @@ final class Analytics
     {
         $exam = Database::fetchOne(
             'SELECT id, moodle_quiz_id, question_count, duration_minutes, account_id FROM exams
-              WHERE (id = ? OR moodle_quiz_id = ?) AND (account_id = ? OR ? = 0 OR account_id = 0)
+              WHERE id = ? OR moodle_quiz_id = ?
               ORDER BY (account_id = ?) DESC LIMIT 1',
-            [$examId, $examId, $explicitAccountId, $explicitAccountId, $explicitAccountId]
+            [$examId, $examId, $explicitAccountId]
         );
         $internalExamId = $exam ? (int)$exam['id'] : $examId;
         $mQuizId = $exam ? (int)$exam['moodle_quiz_id'] : $examId;
@@ -23,9 +23,14 @@ final class Analytics
         $accountId     = $explicitAccountId > 0 ? $explicitAccountId : (int)($exam['account_id'] ?? 0);
 
         // Ensure any pending events are processed into session_summaries
-        try { Aggregator::process(500); } catch (\Throwable $e) {}
+        try { Aggregator::process(2000); } catch (\Throwable $e) {}
 
-        $sqlParams = [$internalExamId, $mQuizId, $internalExamId, $mQuizId, $internalExamId, $mQuizId, $internalExamId, $mQuizId];
+        $sqlParams = [
+            $internalExamId, $mQuizId, 
+            $internalExamId, $mQuizId, $internalExamId, $mQuizId, 
+            $internalExamId, $mQuizId, 
+            $internalExamId, $mQuizId
+        ];
 
         $rows = Database::fetchAll(
             'SELECT ss.student_id,
@@ -77,6 +82,7 @@ final class Analytics
                OR ss.exam_id = ? 
                OR ss.exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ? OR moodle_quiz_id = ? OR id = ? OR id = ?)
                OR ss.session_id IN (SELECT session_id FROM sessions WHERE exam_id = ? OR exam_id = ?)
+               OR ss.session_id IN (SELECT session_id FROM events WHERE moodle_quiz_id = ? OR moodle_quiz_id = ?)
              )
              GROUP BY ss.student_id',
             $sqlParams
