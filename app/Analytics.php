@@ -34,7 +34,7 @@ final class Analytics
 
         $rows = Database::fetchAll(
             'SELECT ss.student_id,
-                    COALESCE(MAX(st.fullname), NULLIF(MAX(ss.student_name), ""), CONCAT("طالب #", ss.student_id)) AS fullname,
+                    COALESCE(MAX(st.fullname), CONCAT("طالب #", ss.student_id)) AS fullname,
                     COALESCE(MAX(st.username), "") AS username,
                     COUNT(DISTINCT ss.session_id) AS sessions_count,
                     SUM(ss.event_count) AS event_count,

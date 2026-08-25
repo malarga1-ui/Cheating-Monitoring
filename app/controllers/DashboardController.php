@@ -191,13 +191,16 @@ final class DashboardController
             $where = $scope ? " AND $scope" : '';
 
             $rows = Database::fetchAll(
-                "SELECT ss.id, ss.student_id, ss.student_name, ss.student_username,
+                "SELECT ss.id, ss.student_id,
+                        COALESCE(st.fullname, CONCAT('طالب #', ss.student_id)) AS student_name,
+                        COALESCE(st.username, '') AS student_username,
                         ss.exam_id, ss.exam_name, ss.course_id, ss.course_name,
                         ss.session_id, ss.risk_score, ss.risk_level, ss.event_count,
                         ss.tab_hidden_count, ss.paste_count, ss.copy_count,
                         ss.ai_suspect_score, ss.same_ip_student_count, ss.similarity_max_score,
                         ss.first_event_at, ss.last_event_at
                  FROM session_summaries ss
+                 LEFT JOIN students st ON (st.id = ss.student_id OR st.moodle_user_id = ss.student_id)
                  WHERE ss.risk_level IN ('high','critical') $where
                  ORDER BY ss.risk_score DESC, ss.last_event_at DESC
                  LIMIT 10"

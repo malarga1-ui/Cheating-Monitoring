@@ -494,7 +494,7 @@ final class TeacherPortalController
                     SUM(ss.copy_count) AS copy_count,
                     SUM(ss.devtools_count) AS devtools_count,
                     SUM(ss.event_count) AS event_count,
-                    COALESCE(MAX(s.fullname), NULLIF(MAX(ss.student_name), ''), CONCAT('طالب #', ss.student_id)) AS fullname,
+                    COALESCE(MAX(s.fullname), CONCAT('طالب #', ss.student_id)) AS fullname,
                     COALESCE(MAX(s.username), '') AS username,
                     COALESCE(MAX(e.name), 'اختبار أسئلة دينية عامة') AS exam_name
                FROM session_summaries ss
@@ -741,7 +741,7 @@ final class TeacherPortalController
                     MAX(ss.typing_answer_ratio) AS typing_answer_ratio,
                     MAX(ss.similarity_max_score) AS similarity_max_score,
                     MAX(ss.similarity_match_count) AS similarity_match_count,
-                    COALESCE(MAX(s.fullname), NULLIF(MAX(ss.student_name), ""), CONCAT("طالب #", ss.student_id)) AS fullname,
+                    COALESCE(MAX(s.fullname), CONCAT("طالب #", ss.student_id)) AS fullname,
                     COALESCE(MAX(s.username), "") AS username
              FROM session_summaries ss
              LEFT JOIN students s ON (s.id = ss.student_id OR s.moodle_user_id = ss.student_id)
