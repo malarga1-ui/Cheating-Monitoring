@@ -70,10 +70,24 @@ final class TelemetryController
     public static function health(): void
     {
         self::corsHeaders();
+        try {
+            $dbOk = true;
+            $totalEvents = (int)Database::scalar('SELECT COUNT(*) FROM events');
+            $lastEventAt = Database::scalar('SELECT MAX(received_at) FROM events');
+            $dbError = null;
+        } catch (\Throwable $e) {
+            $dbOk = false;
+            $totalEvents = 0;
+            $lastEventAt = null;
+            $dbError = $e->getMessage();
+        }
         Response::ok([
-            'status' => 'ok',
-            'total_events' => (int)Database::scalar('SELECT COUNT(*) FROM events'),
-            'last_event_at' => Database::scalar('SELECT MAX(received_at) FROM events'),
+            'status' => $dbOk ? 'ok' : 'degraded',
+            'database' => $dbOk ? 'connected' : 'error',
+            'db_error' => $dbError,
+            'total_events' => $totalEvents,
+            'last_event_at' => $lastEventAt,
+            'php_version' => PHP_VERSION,
         ]);
     }
 

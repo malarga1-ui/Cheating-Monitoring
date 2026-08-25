@@ -8,8 +8,41 @@ if (!function_exists('em_config')) {
         static $config = null;
         if ($config === null) {
             $base = require __DIR__ . '/config.php';
-            $localFile = __DIR__ . '/../config.local.php';
-            $local = is_file($localFile) ? require $localFile : [];
+            $candidates = [
+                __DIR__ . '/../config.local.php',
+                __DIR__ . '/config.local.php',
+                dirname(__DIR__, 2) . '/config.local.php',
+                dirname(__DIR__) . '/config.php',
+            ];
+            $local = [];
+            foreach ($candidates as $cand) {
+                if (is_file($cand)) {
+                    $loaded = require $cand;
+                    if (is_array($loaded)) {
+                        $local = array_replace_recursive($local, $loaded);
+                    }
+                }
+            }
+            // Also check .env file if present
+            $envCandidates = [__DIR__ . '/../.env', __DIR__ . '/.env', dirname(__DIR__, 2) . '/.env'];
+            foreach ($envCandidates as $envFile) {
+                if (is_file($envFile)) {
+                    $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                    foreach ($lines as $line) {
+                        $line = trim($line);
+                        if ($line === '' || str_starts_with($line, '#')) continue;
+                        if (str_contains($line, '=')) {
+                            [$k, $v] = explode('=', $line, 2);
+                            $k = trim($k);
+                            $v = trim($v, " \t\n\r\0\x0B\"'");
+                            if (!getenv($k)) {
+                                putenv("$k=$v");
+                                $_ENV[$k] = $v;
+                            }
+                        }
+                    }
+                }
+            }
             $config = array_replace_recursive($base, $local);
         }
         $keys = explode('.', $key);
