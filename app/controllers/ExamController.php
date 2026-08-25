@@ -57,22 +57,23 @@ final class ExamController
     {
         Auth::requireLogin();
 
-        $exam = Database::fetchOne('SELECT * FROM exams WHERE id = ?', [$id]);
+        $exam = Database::fetchOne('SELECT * FROM exams WHERE id = ? OR moodle_quiz_id = ? ORDER BY (account_id = ?) DESC LIMIT 1', [$id, $id, Auth::accountId()]);
         if (!$exam) {
             Response::error('الامتحان غير موجود', 404);
         }
         Auth::requireRowAccess($exam);
 
         $quizId = (int)$exam['moodle_quiz_id'];
+        $internalId = (int)$exam['id'];
         $accountId = (int)$exam['account_id'];
 
         $counts = Database::fetchOne(
             'SELECT
-                (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE ss.exam_id = ? AND ss.account_id = ?) AS students_count,
-                (SELECT COUNT(DISTINCT ss.session_id)  FROM session_summaries ss WHERE ss.exam_id = ? AND ss.account_id = ?) AS sessions_count,
-                (SELECT COUNT(*) FROM events ev WHERE ev.moodle_quiz_id = ? AND ev.account_id = ?) AS events_count,
-                (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE ss.exam_id = ? AND ss.account_id = ? AND ss.risk_level IN ("high","critical")) AS suspicious_count',
-            [$id, $accountId, $id, $accountId, $quizId, $accountId, $id, $accountId]
+                (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = ? OR ss.exam_id = ?) AND (ss.account_id = ? OR ss.account_id = 0)) AS students_count,
+                (SELECT COUNT(DISTINCT ss.session_id)  FROM session_summaries ss WHERE (ss.exam_id = ? OR ss.exam_id = ?) AND (ss.account_id = ? OR ss.account_id = 0)) AS sessions_count,
+                (SELECT COUNT(*) FROM events ev WHERE (ev.moodle_quiz_id = ? OR ev.moodle_quiz_id = ?) AND (ev.account_id = ? OR ev.account_id = 0)) AS events_count,
+                (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = ? OR ss.exam_id = ?) AND (ss.account_id = ? OR ss.account_id = 0) AND ss.risk_level IN ("high","critical")) AS suspicious_count',
+            [$internalId, $quizId, $accountId, $internalId, $quizId, $accountId, $quizId, $internalId, $accountId, $internalId, $quizId, $accountId]
         );
 
         $riskDist = Database::fetchAll(
@@ -163,13 +164,13 @@ final class ExamController
     {
         Auth::requireLogin();
 
-        $exam = Database::fetchOne('SELECT id, moodle_course_id, account_id FROM exams WHERE id = ?', [$id]);
+        $exam = Database::fetchOne('SELECT id, moodle_quiz_id, moodle_course_id, account_id FROM exams WHERE id = ? OR moodle_quiz_id = ? ORDER BY (account_id = ?) DESC LIMIT 1', [$id, $id, Auth::accountId()]);
         if (!$exam) {
             Response::error('الامتحان غير موجود', 404);
         }
         Auth::requireRowAccess($exam);
 
-        $students = Analytics::examStudents($id, (int)$exam['account_id']);
+        $students = Analytics::examStudents((int)$exam['moodle_quiz_id'], (int)$exam['account_id']);
 
         // In-memory filter / sort (fine for up to a few thousand students).
         $risk = (string)($_GET['risk'] ?? '');

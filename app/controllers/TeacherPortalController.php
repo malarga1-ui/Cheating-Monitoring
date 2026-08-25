@@ -572,14 +572,16 @@ final class TeacherPortalController
         Auth::requireTeacher();
         $accountId = Auth::accountId();
         $teacherId = Auth::teacherId();
-        self::ownedExam($id, $accountId, $teacherId);
+        $exam = self::ownedExam($id, $accountId, $teacherId);
+        $eId = (int)$exam['id'];
+        $qId = (int)$exam['moodle_quiz_id'];
 
         $groups = Database::fetchAll(
             'SELECT id, ip_address, student_count, student_ids, risk_level, detected_at
              FROM network_groups
-             WHERE account_id = ? AND exam_id = ?
+             WHERE (account_id = ? OR account_id = 0) AND (exam_id = ? OR exam_id = ?)
              ORDER BY student_count DESC, risk_level DESC',
-            [$accountId, $id]
+            [$accountId, $eId, $qId]
         );
 
         // Enrich with student names
@@ -590,7 +592,7 @@ final class TeacherPortalController
             if ($sids !== []) {
                 $placeholders = implode(',', array_fill(0, count($sids), '?'));
                 $students = Database::fetchAll(
-                    "SELECT id, fullname, username FROM students WHERE id IN ($placeholders) AND account_id = ?",
+                    "SELECT id, fullname, username FROM students WHERE id IN ($placeholders) AND (account_id = ? OR account_id = 0)",
                     array_merge($sids, [$accountId])
                 );
                 foreach ($students as $s) {
@@ -620,7 +622,9 @@ final class TeacherPortalController
         Auth::requireTeacher();
         $accountId = Auth::accountId();
         $teacherId = Auth::teacherId();
-        self::ownedExam($id, $accountId, $teacherId);
+        $exam = self::ownedExam($id, $accountId, $teacherId);
+        $eId = (int)$exam['id'];
+        $qId = (int)$exam['moodle_quiz_id'];
 
         $minSim = max(0, min(100, (int)($_GET['min_similarity'] ?? 30)));
 
@@ -628,10 +632,10 @@ final class TeacherPortalController
             'SELECT sp.student_a_id, sp.student_b_id, sp.similarity_pct,
                     sp.matching_questions, sp.total_questions, sp.detected_at
              FROM similarity_pairs sp
-             WHERE sp.account_id = ? AND sp.exam_id = ? AND sp.similarity_pct >= ?
+             WHERE (sp.account_id = ? OR sp.account_id = 0) AND (sp.exam_id = ? OR sp.exam_id = ?) AND sp.similarity_pct >= ?
              ORDER BY sp.similarity_pct DESC
              LIMIT 200',
-            [$accountId, $id, $minSim]
+            [$accountId, $eId, $qId, $minSim]
         );
 
         // Enrich with student names
@@ -756,17 +760,19 @@ final class TeacherPortalController
         Auth::requireTeacher();
         $accountId = Auth::accountId();
         $teacherId = Auth::teacherId();
-        self::ownedExam($id, $accountId, $teacherId);
+        $exam = self::ownedExam($id, $accountId, $teacherId);
+        $eId = (int)$exam['id'];
+        $qId = (int)$exam['moodle_quiz_id'];
 
         $devices = Database::fetchAll(
             "SELECT sd.student_id, sd.ip_address, sd.browser_fp, sd.user_agent,
                     sd.first_seen, sd.last_seen, sd.snapshot_count,
                     s.fullname, s.username
              FROM student_devices sd
-             JOIN students s ON s.id = sd.student_id AND s.account_id = sd.account_id
-             WHERE sd.account_id = ? AND sd.exam_id = ?
+             JOIN students s ON s.id = sd.student_id AND (s.account_id = sd.account_id OR s.account_id = 0)
+             WHERE (sd.account_id = ? OR sd.account_id = 0) AND (sd.exam_id = ? OR sd.exam_id = ?)
              ORDER BY sd.student_id, sd.first_seen",
-            [$accountId, $id]
+            [$accountId, $eId, $qId]
         );
 
         // Group by student
