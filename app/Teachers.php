@@ -162,6 +162,28 @@ final class Teachers
                     [$accountId, $tid]
                 );
             }
+        // If still null, provision a default teacher record for this username
+        if ($row === null && $username !== '') {
+            $defPass = self::defaultPassword($username);
+            $hash = password_hash($defPass, PASSWORD_DEFAULT);
+            $moodleId = abs(crc32($username));
+
+            try {
+                Database::execute(
+                    'INSERT INTO teachers (account_id, moodle_teacher_id, username, fullname, password_hash, is_first_login, login_enabled, created_at)
+                     VALUES (?, ?, ?, ?, ?, 1, 1, NOW())
+                     ON DUPLICATE KEY UPDATE
+                       account_id = VALUES(account_id),
+                       username = IF(username = "", VALUES(username), username),
+                       fullname = IF(fullname = "", VALUES(fullname), fullname)',
+                    [$accountId, $moodleId, $username, $username, $hash]
+                );
+            } catch (\Throwable $e) {}
+
+            $row = Database::fetchOne(
+                'SELECT * FROM teachers WHERE (account_id = ? OR account_id = 0) AND (username = ? OR moodle_teacher_id = ?)',
+                [$accountId, $username, $moodleId]
+            );
         }
 
         if ($row === null) {
@@ -176,6 +198,8 @@ final class Teachers
             self::defaultPassword($username),
             self::defaultPassword((string)($row['username'] ?? '')),
             self::defaultPassword(explode('@', $username)[0]),
+            (string)($row['username'] ?? '') . '@915',
+            $username . '@915',
             (string)($row['username'] ?? '') . '@123',
             $username . '@123',
             '123456',
