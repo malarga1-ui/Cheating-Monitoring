@@ -368,29 +368,75 @@ final class Auth
     /** Does the given teacher own this exam (course assignment)? */
     public static function teacherOwnsExam(int $accountId, int $teacherId, array $exam): bool
     {
+        if (self::isOwner()) {
+            return true;
+        }
         if ((int)($exam['account_id'] ?? 0) !== $accountId && (int)($exam['account_id'] ?? 0) !== 0) {
             return false;
         }
+
+        // 1. Direct teacher assignment on exam record
+        if ((int)($exam['moodle_teacher_id'] ?? 0) === $teacherId && $teacherId > 0) {
+            return true;
+        }
+
+        // 2. Course-level assignment
         $mCourseId = (int)($exam['moodle_course_id'] ?? 0);
+        $teacherCourseIds = Teachers::courseIds($accountId, $teacherId);
         if ($mCourseId > 0) {
+            if (in_array($mCourseId, $teacherCourseIds, true)) {
+                return true;
+            }
+            // Check if course_teachers has this course by moodle_course_id or internal id
             $count = (int)Database::scalar(
-                'SELECT COUNT(*) FROM course_teachers
-                  WHERE (account_id = ? OR account_id = 0) AND moodle_teacher_id = ? AND moodle_course_id = ?',
-                [$accountId, $teacherId, $mCourseId]
+                'SELECT COUNT(*) FROM course_teachers ct
+                  WHERE (ct.account_id = ? OR ct.account_id = 0)
+                    AND ct.moodle_teacher_id = ?
+                    AND (
+                      ct.moodle_course_id = ?
+                      OR ct.moodle_course_id IN (SELECT c.moodle_course_id FROM courses c WHERE (c.id = ? OR c.moodle_course_id = ?) AND (c.account_id = ? OR c.account_id = 0))
+                      OR ct.moodle_course_id IN (SELECT c.id FROM courses c WHERE (c.id = ? OR c.moodle_course_id = ?) AND (c.account_id = ? OR c.account_id = 0))
+                    )',
+                [$accountId, $teacherId, $mCourseId, $mCourseId, $mCourseId, $accountId, $mCourseId, $mCourseId, $accountId]
             );
             if ($count > 0) {
                 return true;
             }
         }
-        // Fallback: check if teacher is listed on exam directly
-        if ((int)($exam['moodle_teacher_id'] ?? 0) === $teacherId) {
+
+        // 3. Fallback: check if any event for this exam has this teacher or teacher's courses
+        $quizId = (int)($exam['moodle_quiz_id'] ?? 0);
+        $examId = (int)($exam['id'] ?? 0);
+        $courseIn = empty($teacherCourseIds) ? '0' : implode(',', array_map('intval', $teacherCourseIds));
+        $evCount = (int)Database::scalar(
+            "SELECT COUNT(*) FROM events ev
+              WHERE (ev.moodle_quiz_id = ? OR ev.moodle_quiz_id = ?)
+                AND (ev.account_id = ? OR ev.account_id = 0)
+                AND (
+                  JSON_EXTRACT(ev.payload, '$.moodle.teacher[0].id') = ?
+                  OR ev.moodle_course_id IN ($courseIn)
+                )",
+            [$quizId, $examId, $accountId, $teacherId]
+        );
+        if ($evCount > 0) {
             return true;
         }
-        // Fallback: check if teacher courses contains this course
-        $teacherCourseIds = Teachers::courseIds($accountId, $teacherId);
-        if (in_array($mCourseId, $teacherCourseIds, true)) {
-            return true;
+
+        // If teacher is assigned to courses and exam belongs to the same university account, allow view
+        if (!empty($teacherCourseIds)) {
+            $examCourse = Database::fetchOne(
+                'SELECT id, moodle_course_id FROM courses WHERE (id = ? OR moodle_course_id = ?) AND (account_id = ? OR account_id = 0)',
+                [$mCourseId, $mCourseId, $accountId]
+            );
+            if ($examCourse) {
+                $cMoodle = (int)$examCourse['moodle_course_id'];
+                $cId = (int)$examCourse['id'];
+                if (in_array($cMoodle, $teacherCourseIds, true) || in_array($cId, $teacherCourseIds, true)) {
+                    return true;
+                }
+            }
         }
+
         return false;
     }
 
