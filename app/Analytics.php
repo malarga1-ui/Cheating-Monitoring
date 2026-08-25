@@ -22,11 +22,14 @@ final class Analytics
         $examMinutes   = (int)($exam['duration_minutes'] ?? 0);
         $accountId     = $explicitAccountId > 0 ? $explicitAccountId : (int)($exam['account_id'] ?? 0);
 
-        $sqlParams = [$internalExamId, $mQuizId, $mQuizId, $internalExamId, $internalExamId, $mQuizId];
+        // Ensure any pending events are processed into session_summaries
+        try { Aggregator::process(500); } catch (\Throwable $e) {}
+
+        $sqlParams = [$internalExamId, $mQuizId, $internalExamId, $mQuizId, $internalExamId, $mQuizId, $internalExamId, $mQuizId];
 
         $rows = Database::fetchAll(
             'SELECT ss.student_id,
-                    COALESCE(MAX(st.fullname), MAX(ss.student_name), CONCAT("طالب #", ss.student_id)) AS fullname,
+                    COALESCE(MAX(st.fullname), NULLIF(MAX(ss.student_name), ""), CONCAT("طالب #", ss.student_id)) AS fullname,
                     COALESCE(MAX(st.username), "") AS username,
                     COUNT(DISTINCT ss.session_id) AS sessions_count,
                     SUM(ss.event_count) AS event_count,
@@ -72,7 +75,7 @@ final class Analytics
              WHERE (
                ss.exam_id = ? 
                OR ss.exam_id = ? 
-               OR ss.exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ? OR id = ?)
+               OR ss.exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ? OR moodle_quiz_id = ? OR id = ? OR id = ?)
                OR ss.session_id IN (SELECT session_id FROM sessions WHERE exam_id = ? OR exam_id = ?)
              )
              GROUP BY ss.student_id',
@@ -155,7 +158,7 @@ final class Analytics
                 $evParams = [$mQuizId, $internalExamId, $internalExamId, $mQuizId];
 
                 $evRows = Database::fetchAll(
-                    "SELECT e.moodle_user_id AS student_id,
+                    "SELECT COALESCE(NULLIF(e.moodle_user_id, 0), st.id, st.moodle_user_id, 1) AS student_id,
                             COALESCE(MAX(st.fullname), CONCAT('طالب #', e.moodle_user_id)) AS fullname,
                             COALESCE(MAX(st.username), '') AS username,
                             COUNT(DISTINCT e.session_id) AS sessions_count,
@@ -167,14 +170,13 @@ final class Analytics
                             MIN(e.event_time) AS first_event_at,
                             MAX(e.event_time) AS last_event_at
                        FROM events e
-                       LEFT JOIN students st ON (st.moodle_user_id = e.moodle_user_id)
+                       LEFT JOIN students st ON (st.moodle_user_id = e.moodle_user_id OR st.id = e.moodle_user_id)
                       WHERE (
                         e.moodle_quiz_id = ? 
                         OR e.moodle_quiz_id = ? 
                         OR e.session_id IN (SELECT session_id FROM sessions WHERE exam_id = ? OR exam_id = ?)
                       )
-                        AND e.moodle_user_id > 0
-                      GROUP BY e.moodle_user_id",
+                      GROUP BY student_id",
                     $evParams
                 );
                 foreach ($evRows as $er) {
