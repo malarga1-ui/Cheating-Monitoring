@@ -413,10 +413,10 @@ final class Auth
               WHERE (ev.moodle_quiz_id = ? OR ev.moodle_quiz_id = ?)
                 AND (ev.account_id = ? OR ev.account_id = 0)
                 AND (
-                  JSON_EXTRACT(ev.payload, '$.moodle.teacher[0].id') = ?
-                  OR ev.moodle_course_id IN ($courseIn)
+                  ev.moodle_course_id IN ($courseIn)
+                  OR ev.payload LIKE ?
                 )",
-            [$quizId, $examId, $accountId, $teacherId]
+            [$quizId, $examId, $accountId, "%\"id\":$teacherId%"]
         );
         if ($evCount > 0) {
             return true;

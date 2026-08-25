@@ -94,24 +94,37 @@ final class Teachers
             [$accountId, $username, $username, $isNumeric, $isNumeric, "%$username%", $accountId]
         );
 
-        // Fallback: if not found in teachers table, try to find teacher in recent events payload
+        // Fallback: if not found in teachers table, try to find teacher in recent events payload (decoded safely in PHP)
         if ($row === null) {
-            $evTeacher = Database::fetchOne(
-                "SELECT DISTINCT
-                        JSON_UNQUOTE(JSON_EXTRACT(payload, '$.moodle.teacher[0].id')) AS tid,
-                        JSON_UNQUOTE(JSON_EXTRACT(payload, '$.moodle.teacher[0].username')) AS uname,
-                        JSON_UNQUOTE(JSON_EXTRACT(payload, '$.moodle.teacher[0].fullname')) AS fname,
-                        moodle_course_id
+            $evTeacher = null;
+            $evRows = Database::fetchAll(
+                "SELECT payload, moodle_course_id
                    FROM events
-                  WHERE account_id = ?
-                    AND (
-                      JSON_UNQUOTE(JSON_EXTRACT(payload, '$.moodle.teacher[0].username')) = ?
-                      OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.moodle.teacher[0].username'))) = LOWER(?)
-                      OR JSON_UNQUOTE(JSON_EXTRACT(payload, '$.moodle.teacher[0].fullname')) LIKE ?
-                    )
-                  ORDER BY id DESC LIMIT 1",
-                [$accountId, $username, $username, "%$username%"]
+                  WHERE (account_id = ? OR account_id = 0)
+                    AND payload LIKE ?
+                  ORDER BY id DESC LIMIT 50",
+                [$accountId, "%$username%"]
             );
+
+            foreach ($evRows as $ev) {
+                $p = json_decode((string)($ev['payload'] ?? ''), true);
+                if (!is_array($p)) continue;
+                $teachers = $p['moodle']['teacher'] ?? [];
+                if (!is_array($teachers)) continue;
+                foreach ($teachers as $t) {
+                    $u = trim((string)($t['username'] ?? ''));
+                    $f = trim((string)($t['fullname'] ?? ''));
+                    if (strcasecmp($u, $username) === 0 || mb_stripos($f, $username) !== false) {
+                        $evTeacher = [
+                            'tid' => (int)($t['id'] ?? 0),
+                            'uname' => $u !== '' ? $u : $username,
+                            'fname' => $f !== '' ? $f : $username,
+                            'moodle_course_id' => (int)($ev['moodle_course_id'] ?? 0),
+                        ];
+                        break 2;
+                    }
+                }
+            }
 
             if ($evTeacher && !empty($evTeacher['tid'])) {
                 $tid = (int)$evTeacher['tid'];
@@ -145,7 +158,7 @@ final class Teachers
                 } catch (\Throwable $e) {}
 
                 $row = Database::fetchOne(
-                    'SELECT * FROM teachers WHERE account_id = ? AND moodle_teacher_id = ?',
+                    'SELECT * FROM teachers WHERE (account_id = ? OR account_id = 0) AND moodle_teacher_id = ?',
                     [$accountId, $tid]
                 );
             }
