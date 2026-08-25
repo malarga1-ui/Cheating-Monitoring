@@ -146,9 +146,7 @@ final class Analytics
             // Fallback: query raw events if session_summaries is empty
             if ($mQuizId > 0 || $internalExamId > 0) {
                 $evWhereAccount = ($accountId > 0) ? ' AND (e.account_id = ? OR e.account_id = 0)' : '';
-                $teacherClause = ($accountId > 0) ? 'WHERE (account_id = ? OR account_id = 0)' : '';
                 $evParams = [$mQuizId, $internalExamId];
-                if ($accountId > 0) { $evParams[] = $accountId; }
                 if ($accountId > 0) { $evParams[] = $accountId; }
 
                 $evRows = Database::fetchAll(
@@ -167,7 +165,6 @@ final class Analytics
                        LEFT JOIN students st ON (st.moodle_user_id = e.moodle_user_id AND (st.account_id = e.account_id OR st.account_id = 0))
                       WHERE (e.moodle_quiz_id = ? OR e.moodle_quiz_id = ?)" . $evWhereAccount . "
                         AND e.moodle_user_id > 0
-                        AND e.moodle_user_id NOT IN (SELECT moodle_teacher_id FROM teachers " . $teacherClause . ")
                       GROUP BY e.moodle_user_id",
                     $evParams
                 );
