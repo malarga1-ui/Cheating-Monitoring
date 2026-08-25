@@ -22,7 +22,7 @@ final class Analytics
         $examMinutes   = (int)($exam['duration_minutes'] ?? 0);
         $accountId     = $explicitAccountId > 0 ? $explicitAccountId : (int)($exam['account_id'] ?? 0);
 
-        $sqlParams = [$internalExamId, $mQuizId];
+        $sqlParams = [$internalExamId, $mQuizId, $mQuizId, $internalExamId];
 
         $rows = Database::fetchAll(
             'SELECT ss.student_id,
@@ -69,7 +69,7 @@ final class Analytics
                     GROUP_CONCAT(DISTINCT ss.ip_address ORDER BY ss.ip_address SEPARATOR ", ") AS ip_addresses
              FROM session_summaries ss
              LEFT JOIN students st ON (st.moodle_user_id = ss.student_id OR st.id = ss.student_id)
-             WHERE (ss.exam_id = ? OR ss.exam_id = ?)
+             WHERE (ss.exam_id = ? OR ss.exam_id = ? OR ss.exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ? OR id = ?))
              GROUP BY ss.student_id',
             $sqlParams
         );
@@ -147,10 +147,10 @@ final class Analytics
         } else {
             // Fallback: query raw events if session_summaries is empty
             if ($mQuizId > 0 || $internalExamId > 0) {
-                $evParams = [$mQuizId, $internalExamId];
+                $evParams = [(string)$mQuizId, (string)$internalExamId, (string)$mQuizId, (string)$internalExamId];
 
                 $evRows = Database::fetchAll(
-                    "SELECT e.moodle_user_id AS student_id,
+                    "SELECT COALESCE(NULLIF(e.moodle_user_id, 0), CAST(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.student.id')) AS UNSIGNED)) AS student_id,
                             COALESCE(MAX(st.fullname), MAX(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.student.fullname'))), CONCAT('طالب #', e.moodle_user_id)) AS fullname,
                             COALESCE(MAX(st.username), MAX(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.student.username'))), '') AS username,
                             COUNT(DISTINCT e.session_id) AS sessions_count,
@@ -163,9 +163,14 @@ final class Analytics
                             MAX(e.event_time) AS last_event_at
                        FROM events e
                        LEFT JOIN students st ON (st.moodle_user_id = e.moodle_user_id)
-                      WHERE (e.moodle_quiz_id = ? OR e.moodle_quiz_id = ?)
-                        AND e.moodle_user_id > 0
-                      GROUP BY e.moodle_user_id",
+                      WHERE (
+                        e.moodle_quiz_id = ? 
+                        OR e.moodle_quiz_id = ? 
+                        OR JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.quiz.id')) = ? 
+                        OR JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.quiz.id')) = ?
+                      )
+                      GROUP BY student_id
+                     HAVING student_id > 0",
                     $evParams
                 );
                 foreach ($evRows as $er) {
