@@ -232,6 +232,11 @@ final class DashboardController
         Response::ok(['students' => $data]);
     }
 
+    public static function topRisky(): void
+    {
+        self::topSuspicious();
+    }
+
     /**
      * GET /api/dashboard/edu-overview
      * Hierarchical overview: Courses -> Exams with aggregated KPIs.

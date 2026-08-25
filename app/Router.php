@@ -6,19 +6,23 @@ final class Router
 {
     private array $routes = [];
 
-    public function add(string $method, string $path, callable $handler): void
+    public function add(string $method, string $path, $handler): void
     {
         // Detect first parameter type once at registration time (zero cost per request).
         $firstType = null;
         try {
-            if (is_array($handler)) {
+            if (is_array($handler) && class_exists($handler[0]) && method_exists($handler[0], $handler[1])) {
                 $ref = new \ReflectionMethod($handler[0], $handler[1]);
-            } else {
+                $params = $ref->getParameters();
+                if (!empty($params) && $params[0]->getType()) {
+                    $firstType = $params[0]->getType()->getName();
+                }
+            } elseif (is_callable($handler)) {
                 $ref = new \ReflectionFunction($handler);
-            }
-            $params = $ref->getParameters();
-            if (!empty($params) && $params[0]->getType()) {
-                $firstType = $params[0]->getType()->getName();
+                $params = $ref->getParameters();
+                if (!empty($params) && $params[0]->getType()) {
+                    $firstType = $params[0]->getType()->getName();
+                }
             }
         } catch (\Throwable $e) {}
 
@@ -30,22 +34,22 @@ final class Router
         ];
     }
 
-    public function get(string $path, callable $handler): void
+    public function get(string $path, $handler): void
     {
         $this->add('GET', $path, $handler);
     }
 
-    public function post(string $path, callable $handler): void
+    public function post(string $path, $handler): void
     {
         $this->add('POST', $path, $handler);
     }
 
-    public function delete(string $path, callable $handler): void
+    public function delete(string $path, $handler): void
     {
         $this->add('DELETE', $path, $handler);
     }
 
-    public function any(string $path, callable $handler): void
+    public function any(string $path, $handler): void
     {
         $this->add('ANY', $path, $handler);
     }
