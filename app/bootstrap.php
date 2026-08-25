@@ -41,7 +41,19 @@ if ($isProd) {
 
 set_exception_handler(function (Throwable $e) use ($isProd): void {
     error_log('[ExamMonitor] ' . $e->getMessage() . "\n" . $e->getTraceAsString());
-    Response::error('خطأ في الخادم: ' . $e->getMessage(), 500, ['trace' => $isProd ? null : $e->getTraceAsString()]);
+
+    $path = rawurldecode((string)parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH));
+    $isApi = str_starts_with($path, '/api/') || str_starts_with($path, '/telemetry');
+
+    if ($isApi) {
+        Response::error('خطأ في الخادم: ' . $e->getMessage(), 500, ['trace' => $isProd ? null : $e->getTraceAsString()]);
+    } else {
+        http_response_code(200);
+        header('Content-Type: text/html; charset=utf-8');
+        $msg = htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8');
+        echo "<!DOCTYPE html><html dir='rtl' lang='ar'><head><meta charset='utf-8'><title>مراقب الامتحانات</title><style>body{font-family:system-ui,sans-serif;background:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}.card{background:#fff;padding:2rem;border-radius:1.5rem;box-shadow:0 20px 40px -15px rgba(0,0,0,.08);max-width:480px;text-align:center;border:1px solid #e2e8f0}h1{color:#e11d48;font-size:1.2rem;margin-bottom:0.5rem;font-weight:800}p{color:#64748b;font-size:0.875rem;line-height:1.5}a{display:inline-block;margin-top:1.25rem;padding:0.7rem 1.5rem;background:#4f46e5;color:#fff;text-decoration:none;border-radius:0.75rem;font-weight:800;font-size:0.85rem}</style></head><body><div class='card'><h1>تعذر تحميل الصفحة المؤقت</h1><p>{$msg}</p><a href='/admin'>إعادة المحاولة</a></div></body></html>";
+        exit;
+    }
 });
 
 // ---------------------------------------------------------------
