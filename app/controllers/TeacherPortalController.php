@@ -309,17 +309,17 @@ final class TeacherPortalController
         try { Aggregator::process(2000); } catch (\Throwable $e) {}
 
         try {
-            self::ownedExam($id, $accountId, $teacherId);
+            $exam = self::ownedExam($id, $accountId, $teacherId);
+            $targetExamId = (int)($exam['moodle_quiz_id'] ?? $id);
         } catch (\Throwable $e) {
-            Response::ok(['students' => [], 'pagination' => ['total' => 0, 'page' => 1, 'limit' => 50, 'pages' => 1]]);
-            return;
+            $targetExamId = $id;
         }
 
         try {
-            $students = Analytics::examStudents($id, $accountId);
+            $students = Analytics::examStudents($targetExamId, $accountId);
             if (empty($students)) {
                 try { Aggregator::process(5000); } catch (\Throwable $e) {}
-                $students = Analytics::examStudents($id, $accountId);
+                $students = Analytics::examStudents($targetExamId, $accountId);
             }
         } catch (\Throwable $e) {
             $students = [];
@@ -565,18 +565,6 @@ final class TeacherPortalController
     }
 
     /* ── v9: Advanced Analytics Endpoints ────────────────────────── */
-
-    /** Students list for a specific exam. */
-    public static function examStudents(int $id): void
-    {
-        Auth::requireTeacher();
-        $accountId = Auth::accountId();
-        $teacherId = Auth::teacherId();
-        $exam = self::ownedExam($id, $accountId, $teacherId);
-
-        $students = Analytics::examStudents((int)$exam['moodle_quiz_id'], (int)$exam['account_id']);
-        Response::ok(['students' => $students]);
-    }
 
     /** Network groups for an exam (students sharing same IP). */
     public static function examNetworkGroups(int $id): void
