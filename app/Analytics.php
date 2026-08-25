@@ -152,12 +152,12 @@ final class Analytics
         } else {
             // Fallback: query raw events if session_summaries is empty
             if ($mQuizId > 0 || $internalExamId > 0) {
-                $evParams = [(string)$mQuizId, (string)$internalExamId, (string)$mQuizId, (string)$internalExamId, $internalExamId, $mQuizId];
+                $evParams = [$mQuizId, $internalExamId, $internalExamId, $mQuizId];
 
                 $evRows = Database::fetchAll(
-                    "SELECT COALESCE(NULLIF(e.moodle_user_id, 0), CAST(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.student.id')) AS UNSIGNED)) AS student_id,
-                            COALESCE(MAX(st.fullname), MAX(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.student.fullname'))), CONCAT('طالب #', e.moodle_user_id)) AS fullname,
-                            COALESCE(MAX(st.username), MAX(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.student.username'))), '') AS username,
+                    "SELECT e.moodle_user_id AS student_id,
+                            COALESCE(MAX(st.fullname), CONCAT('طالب #', e.moodle_user_id)) AS fullname,
+                            COALESCE(MAX(st.username), '') AS username,
                             COUNT(DISTINCT e.session_id) AS sessions_count,
                             COUNT(*) AS event_count,
                             SUM(CASE WHEN e.event_type = 'tab_hidden' THEN 1 ELSE 0 END) AS tab_hidden_count,
@@ -171,12 +171,10 @@ final class Analytics
                       WHERE (
                         e.moodle_quiz_id = ? 
                         OR e.moodle_quiz_id = ? 
-                        OR JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.quiz.id')) = ? 
-                        OR JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.quiz.id')) = ?
                         OR e.session_id IN (SELECT session_id FROM sessions WHERE exam_id = ? OR exam_id = ?)
                       )
-                      GROUP BY student_id
-                     HAVING student_id > 0",
+                        AND e.moodle_user_id > 0
+                      GROUP BY e.moodle_user_id",
                     $evParams
                 );
                 foreach ($evRows as $er) {
