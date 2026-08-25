@@ -70,10 +70,17 @@ final class TeacherAuthController
         }
 
         // Authenticate against the platform password (not Moodle).
-        $teacher = Teachers::authenticate((int)$account['id'], $username, $password);
+        $teacher = null;
+        try {
+            $teacher = Teachers::authenticate((int)$account['id'], $username, $password);
+        } catch (\Throwable $e) {
+            error_log('[TeacherLoginError] ' . $e->getMessage());
+            $teacher = null;
+        }
+
         if ($teacher === null) {
             self::recordAttempt();
-            Response::error('اسم المستخدم أو كلمة المرور غير صحيحة', 401);
+            Response::error('اسم المستخدم أو كلمة المرور غير صحيحة (تأكد من اسم المستخدم المسجل في مودل)', 401);
         }
 
         Auth::attemptTeacher((int)$account['id'], $teacher);

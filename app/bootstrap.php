@@ -30,14 +30,11 @@ spl_autoload_register(function (string $class): void {
 // ---------------------------------------------------------------
 error_reporting(E_ALL);
 ini_set('log_errors', '1');
+ini_set('display_errors', '1');
+ini_set('display_startup_errors', '1');
 ini_set('error_log', dirname(__DIR__) . '/storage/logs/php-error.log');
 
 $isProd = em_is_production();
-if ($isProd) {
-    ini_set('display_errors', '0');
-} else {
-    ini_set('display_errors', '1');
-}
 
 set_exception_handler(function (Throwable $e) use ($isProd): void {
     error_log('[ExamMonitor] ' . $e->getMessage() . "\n" . $e->getTraceAsString());

@@ -80,51 +80,66 @@ final class Teachers
         }
 
         $isNumeric = is_numeric($username) ? (int)$username : 0;
-        $row = Database::fetchOne(
-            'SELECT * FROM teachers
-              WHERE (account_id = ? OR account_id = 0)
-                AND (
-                  username = ?
-                  OR LOWER(username) = LOWER(?)
-                  OR (moodle_teacher_id = ? AND ? > 0)
-                  OR fullname LIKE ?
-                )
-              ORDER BY (account_id = ?) DESC, moodle_teacher_id ASC
-              LIMIT 1',
-            [$accountId, $username, $username, $isNumeric, $isNumeric, "%$username%", $accountId]
-        );
+        $accIdInt = (int)$accountId;
+        $row = null;
 
-        // Fallback: if not found in teachers table, try to find teacher in recent events payload (decoded safely in PHP)
+        try {
+            $row = Database::fetchOne(
+                "SELECT * FROM teachers
+                  WHERE (account_id = ? OR account_id = 0)
+                    AND (
+                      username = ?
+                      OR LOWER(username) = LOWER(?)
+                      OR (moodle_teacher_id = ? AND ? > 0)
+                      OR fullname LIKE ?
+                    )
+                  ORDER BY IF(account_id = {$accIdInt}, 1, 0) DESC, moodle_teacher_id ASC
+                  LIMIT 1",
+                [$accountId, $username, $username, $isNumeric, $isNumeric, "%$username%"]
+            );
+        } catch (\Throwable $e) {
+            $row = null;
+        }
+
+        // Fallback: if not found in teachers table, try to find teacher in recent events payload
         if ($row === null) {
             $evTeacher = null;
-            $evRows = Database::fetchAll(
-                "SELECT payload, moodle_course_id
-                   FROM events
-                  WHERE (account_id = ? OR account_id = 0)
-                    AND payload LIKE ?
-                  ORDER BY id DESC LIMIT 50",
-                [$accountId, "%$username%"]
-            );
+            try {
+                $evRows = Database::fetchAll(
+                    "SELECT payload, moodle_course_id
+                       FROM events
+                      WHERE (account_id = ? OR account_id = 0)
+                        AND payload LIKE ?
+                      ORDER BY id DESC LIMIT 100",
+                    [$accountId, "%$username%"]
+                );
 
-            foreach ($evRows as $ev) {
-                $p = json_decode((string)($ev['payload'] ?? ''), true);
-                if (!is_array($p)) continue;
-                $teachers = $p['moodle']['teacher'] ?? [];
-                if (!is_array($teachers)) continue;
-                foreach ($teachers as $t) {
-                    $u = trim((string)($t['username'] ?? ''));
-                    $f = trim((string)($t['fullname'] ?? ''));
-                    if (strcasecmp($u, $username) === 0 || mb_stripos($f, $username) !== false) {
-                        $evTeacher = [
-                            'tid' => (int)($t['id'] ?? 0),
-                            'uname' => $u !== '' ? $u : $username,
-                            'fname' => $f !== '' ? $f : $username,
-                            'moodle_course_id' => (int)($ev['moodle_course_id'] ?? 0),
-                        ];
-                        break 2;
+                foreach ($evRows as $ev) {
+                    $p = json_decode((string)($ev['payload'] ?? ''), true);
+                    if (!is_array($p)) continue;
+                    $teachers = $p['moodle']['teacher'] ?? [];
+                    if (!is_array($teachers)) continue;
+                    foreach ($teachers as $t) {
+                        $u = trim((string)($t['username'] ?? ''));
+                        $f = trim((string)($t['fullname'] ?? ''));
+                        $eMail = trim((string)($t['email'] ?? ''));
+                        if (
+                            strcasecmp($u, $username) === 0 || 
+                            mb_stripos($f, $username) !== false ||
+                            ($eMail !== '' && strcasecmp($eMail, $username) === 0) ||
+                            ($u !== '' && mb_stripos($username, $u) !== false)
+                        ) {
+                            $evTeacher = [
+                                'tid' => (int)($t['id'] ?? 0),
+                                'uname' => $u !== '' ? $u : $username,
+                                'fname' => $f !== '' ? $f : $username,
+                                'moodle_course_id' => (int)($ev['moodle_course_id'] ?? 0),
+                            ];
+                            break 2;
+                        }
                     }
                 }
-            }
+            } catch (\Throwable $e) {}
 
             if ($evTeacher && !empty($evTeacher['tid'])) {
                 $tid = (int)$evTeacher['tid'];
@@ -157,33 +172,39 @@ final class Teachers
                     }
                 } catch (\Throwable $e) {}
 
-                $row = Database::fetchOne(
-                    'SELECT * FROM teachers WHERE (account_id = ? OR account_id = 0) AND moodle_teacher_id = ?',
-                    [$accountId, $tid]
-                );
+                try {
+                    $row = Database::fetchOne(
+                        'SELECT * FROM teachers WHERE (account_id = ? OR account_id = 0) AND moodle_teacher_id = ?',
+                        [$accountId, $tid]
+                    );
+                } catch (\Throwable $e) {}
             }
-        // If still null, provision a default teacher record for this username
-        if ($row === null && $username !== '') {
-            $defPass = self::defaultPassword($username);
-            $hash = password_hash($defPass, PASSWORD_DEFAULT);
-            $moodleId = abs(crc32($username));
 
-            try {
-                Database::execute(
-                    'INSERT INTO teachers (account_id, moodle_teacher_id, username, fullname, password_hash, is_first_login, login_enabled, created_at)
-                     VALUES (?, ?, ?, ?, ?, 1, 1, NOW())
-                     ON DUPLICATE KEY UPDATE
-                       account_id = VALUES(account_id),
-                       username = IF(username = "", VALUES(username), username),
-                       fullname = IF(fullname = "", VALUES(fullname), fullname)',
-                    [$accountId, $moodleId, $username, $username, $hash]
-                );
-            } catch (\Throwable $e) {}
+            // If still null, provision a default teacher record for this username
+            if ($row === null && $username !== '') {
+                $defPass = self::defaultPassword($username);
+                $hash = password_hash($defPass, PASSWORD_DEFAULT);
+                $moodleId = abs(crc32($username));
 
-            $row = Database::fetchOne(
-                'SELECT * FROM teachers WHERE (account_id = ? OR account_id = 0) AND (username = ? OR moodle_teacher_id = ?)',
-                [$accountId, $username, $moodleId]
-            );
+                try {
+                    Database::execute(
+                        'INSERT INTO teachers (account_id, moodle_teacher_id, username, fullname, password_hash, is_first_login, login_enabled, created_at)
+                         VALUES (?, ?, ?, ?, ?, 1, 1, NOW())
+                         ON DUPLICATE KEY UPDATE
+                           account_id = VALUES(account_id),
+                           username = IF(username = "", VALUES(username), username),
+                           fullname = IF(fullname = "", VALUES(fullname), fullname)',
+                        [$accountId, $moodleId, $username, $username, $hash]
+                    );
+                } catch (\Throwable $e) {}
+
+                try {
+                    $row = Database::fetchOne(
+                        'SELECT * FROM teachers WHERE (account_id = ? OR account_id = 0) AND (username = ? OR moodle_teacher_id = ?)',
+                        [$accountId, $username, $moodleId]
+                    );
+                } catch (\Throwable $e) {}
+            }
         }
 
         if ($row === null) {
