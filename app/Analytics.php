@@ -22,9 +22,7 @@ final class Analytics
         $examMinutes   = (int)($exam['duration_minutes'] ?? 0);
         $accountId     = $explicitAccountId > 0 ? $explicitAccountId : (int)($exam['account_id'] ?? 0);
 
-        $whereExtra = $accountId > 0 ? ' AND (ss.account_id = ? OR ss.account_id = 0)' : '';
         $sqlParams = [$internalExamId, $mQuizId];
-        if ($accountId > 0) { $sqlParams[] = $accountId; }
 
         $rows = Database::fetchAll(
             'SELECT ss.student_id,
@@ -70,8 +68,8 @@ final class Analytics
                     MAX(ss.cognitive_score) AS cognitive_score,
                     GROUP_CONCAT(DISTINCT ss.ip_address ORDER BY ss.ip_address SEPARATOR ", ") AS ip_addresses
              FROM session_summaries ss
-             LEFT JOIN students st ON (st.id = ss.student_id OR st.moodle_user_id = ss.student_id)
-             WHERE (ss.exam_id = ? OR ss.exam_id = ?)' . $whereExtra . '
+             LEFT JOIN students st ON (st.moodle_user_id = ss.student_id OR st.id = ss.student_id)
+             WHERE (ss.exam_id = ? OR ss.exam_id = ?)
              GROUP BY ss.student_id',
             $sqlParams
         );
@@ -89,10 +87,14 @@ final class Analytics
                 $counters['similarity_max_score'] = (int)($r['similarity_max_score'] ?? 0);
                 $counters['similarity_match_count'] = (int)($r['similarity_match_count'] ?? 0);
                 $counters['cognitive_score'] = (int)($r['cognitive_score'] ?? 0);
-                // v14: Pass exam context for normalization
                 $counters['question_count'] = $questionCount;
                 $counters['exam_minutes']   = $examMinutes;
-                $risk = RiskEngine::score($counters);
+                
+                try {
+                    $risk = RiskEngine::score($counters);
+                } catch (\Throwable $ex) {
+                    $risk = ['score' => 0, 'level' => 'safe', 'contributions' => []];
+                }
 
                 $students[] = [
                     'student_id' => (int)$r['student_id'],
@@ -145,9 +147,7 @@ final class Analytics
         } else {
             // Fallback: query raw events if session_summaries is empty
             if ($mQuizId > 0 || $internalExamId > 0) {
-                $evWhereAccount = ($accountId > 0) ? ' AND (e.account_id = ? OR e.account_id = 0)' : '';
                 $evParams = [$mQuizId, $internalExamId];
-                if ($accountId > 0) { $evParams[] = $accountId; }
 
                 $evRows = Database::fetchAll(
                     "SELECT e.moodle_user_id AS student_id,
@@ -162,8 +162,8 @@ final class Analytics
                             MIN(e.event_time) AS first_event_at,
                             MAX(e.event_time) AS last_event_at
                        FROM events e
-                       LEFT JOIN students st ON (st.moodle_user_id = e.moodle_user_id AND (st.account_id = e.account_id OR st.account_id = 0))
-                      WHERE (e.moodle_quiz_id = ? OR e.moodle_quiz_id = ?)" . $evWhereAccount . "
+                       LEFT JOIN students st ON (st.moodle_user_id = e.moodle_user_id)
+                      WHERE (e.moodle_quiz_id = ? OR e.moodle_quiz_id = ?)
                         AND e.moodle_user_id > 0
                       GROUP BY e.moodle_user_id",
                     $evParams
@@ -177,7 +177,11 @@ final class Analytics
                         'copy_count' => (int)$er['copy_count'],
                         'devtools_count' => (int)$er['devtools_count'],
                     ];
-                    $risk = RiskEngine::score($c);
+                    try {
+                        $risk = RiskEngine::score($c);
+                    } catch (\Throwable $ex) {
+                        $risk = ['score' => 0, 'level' => 'safe', 'contributions' => []];
+                    }
                     $students[] = [
                         'student_id' => (int)$er['student_id'],
                         'fullname' => $er['fullname'],
