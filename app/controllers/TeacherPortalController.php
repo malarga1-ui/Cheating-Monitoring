@@ -470,22 +470,30 @@ final class TeacherPortalController
             [$accountId]
         );
 
-        // Top risky students
+        // Top risky students grouped by student_id
         $topRisky = Database::fetchAll(
-            "SELECT ss.student_id, ss.risk_score, ss.risk_level,
-                    ss.same_ip_student_count, ss.same_ip_risk_score,
-                    ss.ai_suspect_score, ss.similarity_max_score,
-                    ss.tab_hidden_count, ss.paste_count, ss.copy_count,
-                    ss.devtools_count, ss.event_count,
-                    s.fullname, s.username,
-                    e.name AS exam_name
+            "SELECT ss.student_id,
+                    MAX(ss.risk_score) AS risk_score,
+                    MAX(ss.risk_level) AS risk_level,
+                    MAX(ss.same_ip_student_count) AS same_ip_student_count,
+                    MAX(ss.same_ip_risk_score) AS same_ip_risk_score,
+                    MAX(ss.ai_suspect_score) AS ai_suspect_score,
+                    MAX(ss.similarity_max_score) AS similarity_max_score,
+                    SUM(ss.tab_hidden_count) AS tab_hidden_count,
+                    SUM(ss.paste_count) AS paste_count,
+                    SUM(ss.copy_count) AS copy_count,
+                    SUM(ss.devtools_count) AS devtools_count,
+                    SUM(ss.event_count) AS event_count,
+                    COALESCE(MAX(s.fullname), NULLIF(MAX(ss.student_name), ''), CONCAT('طالب #', ss.student_id)) AS fullname,
+                    COALESCE(MAX(s.username), '') AS username,
+                    COALESCE(MAX(e.name), 'اختبار أسئلة دينية عامة') AS exam_name
                FROM session_summaries ss
-               JOIN students s ON s.id = ss.student_id
-               JOIN exams e ON e.id = ss.exam_id
-              WHERE ss.exam_id IN ($ein) AND ss.account_id = ?
-              ORDER BY ss.risk_score DESC
-              LIMIT 20",
-            [$accountId]
+               LEFT JOIN students s ON (s.id = ss.student_id OR s.moodle_user_id = ss.student_id)
+               LEFT JOIN exams e ON (e.id = ss.exam_id OR e.moodle_quiz_id = ss.exam_id)
+              WHERE (ss.exam_id IN ($ein) OR ss.session_id IN (SELECT session_id FROM events WHERE moodle_quiz_id IN (SELECT moodle_quiz_id FROM exams WHERE id IN ($ein))))
+              GROUP BY ss.student_id
+              ORDER BY risk_score DESC
+              LIMIT 20"
         );
 
         Response::ok([
@@ -709,19 +717,29 @@ final class TeacherPortalController
             [$id, $accountId]
         );
 
-        // Top risky students with full breakdown
+        // Top risky students with full breakdown grouped by student_id
         $topRisky = Database::fetchAll(
-            'SELECT ss.session_id, ss.risk_score, ss.risk_level,
-                    ss.same_ip_student_count, ss.ip_changed_count, ss.same_ip_risk_score,
-                    ss.ai_suspect_score, ss.answer_text_count, ss.typing_answer_ratio,
-                    ss.similarity_max_score, ss.similarity_match_count,
-                    s.fullname, s.username
+            'SELECT ss.student_id,
+                    MAX(ss.session_id) AS session_id,
+                    MAX(ss.risk_score) AS risk_score,
+                    MAX(ss.risk_level) AS risk_level,
+                    MAX(ss.same_ip_student_count) AS same_ip_student_count,
+                    MAX(ss.ip_changed_count) AS ip_changed_count,
+                    MAX(ss.same_ip_risk_score) AS same_ip_risk_score,
+                    MAX(ss.ai_suspect_score) AS ai_suspect_score,
+                    MAX(ss.answer_text_count) AS answer_text_count,
+                    MAX(ss.typing_answer_ratio) AS typing_answer_ratio,
+                    MAX(ss.similarity_max_score) AS similarity_max_score,
+                    MAX(ss.similarity_match_count) AS similarity_match_count,
+                    COALESCE(MAX(s.fullname), NULLIF(MAX(ss.student_name), ""), CONCAT("طالب #", ss.student_id)) AS fullname,
+                    COALESCE(MAX(s.username), "") AS username
              FROM session_summaries ss
-             JOIN students s ON s.id = ss.student_id
-             WHERE ss.exam_id = ? AND ss.account_id = ?
-             ORDER BY ss.risk_score DESC
+             LEFT JOIN students s ON (s.id = ss.student_id OR s.moodle_user_id = ss.student_id)
+             WHERE (ss.exam_id = ? OR ss.exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ? OR id = ?))
+             GROUP BY ss.student_id
+             ORDER BY risk_score DESC
              LIMIT 20',
-            [$id, $accountId]
+            [$id, $id, $id]
         );
 
         Response::ok([
