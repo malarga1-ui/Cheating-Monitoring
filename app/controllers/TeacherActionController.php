@@ -300,31 +300,60 @@ final class TeacherActionController
                 $params
             );
 
-            // Mark them as delivered
-            $result = [];
-            foreach ($actions as $a) {
-                try {
-                    Database::execute(
-                        'UPDATE teacher_actions SET status = "delivered", delivered_at = NOW() WHERE id = ? AND status = "pending"',
-                        [(int)$a['id']]
-                    );
-                    Database::execute(
-                        'INSERT INTO teacher_action_log (action_id, event_type, created_at) VALUES (?, "delivered", NOW())',
-                        [(int)$a['id']]
-                    );
-                } catch (\Throwable $e) {}
-                $result[] = [
-                    'id' => (int)$a['id'],
-                    'action' => $a['action_type'],
-                    'message' => $a['message'],
-                    'minutes' => $a['minutes_to_reduce'] !== null ? (int)$a['minutes_to_reduce'] : null,
-                ];
+            // Check if this student/session is permanently locked
+            $isLocked = false;
+            $lockQuery = 'SELECT 1 FROM teacher_actions WHERE account_id = ? AND action_type = "lock_exam" AND status IN ("pending", "delivered", "acknowledged")';
+            $lockParams = [$accountId];
+            if ($sessionId !== '') {
+                $lockQuery .= ' AND (session_summary_id = ? OR session_summary_id IN (SELECT id FROM session_summaries WHERE session_id = ?)';
+                $lockParams[] = is_numeric($sessionId) ? (int)$sessionId : 0;
+                $lockParams[] = $sessionId;
+                if ($studentId > 0 && $examId > 0) {
+                    $lockQuery .= ' OR (student_id = ? AND (exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?)))';
+                    $lockParams[] = $studentId;
+                    $lockParams[] = $examId;
+                    $lockParams[] = $examId;
+                }
+                $lockQuery .= ')';
+            } elseif ($studentId > 0 && $examId > 0) {
+                $lockQuery .= ' AND student_id = ? AND (exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?))';
+                $lockParams[] = $studentId;
+                $lockParams[] = $examId;
+                $lockParams[] = $examId;
             }
+            $lockQuery .= ' LIMIT 1';
+            $isLocked = (bool)Database::scalar($lockQuery, $lockParams);
 
-            Response::json(['actions' => $result]);
+            // Calculate total reduced minutes for this session/student
+            $reduceQuery = 'SELECT COALESCE(SUM(minutes_to_reduce), 0) FROM teacher_actions WHERE account_id = ? AND action_type = "reduce_time" AND status IN ("pending", "delivered", "acknowledged")';
+            $reduceParams = [$accountId];
+            if ($sessionId !== '') {
+                $reduceQuery .= ' AND (session_summary_id = ? OR session_summary_id IN (SELECT id FROM session_summaries WHERE session_id = ?)';
+                $reduceParams[] = is_numeric($sessionId) ? (int)$sessionId : 0;
+                $reduceParams[] = $sessionId;
+                if ($studentId > 0 && $examId > 0) {
+                    $reduceQuery .= ' OR (student_id = ? AND (exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?)))';
+                    $reduceParams[] = $studentId;
+                    $reduceParams[] = $examId;
+                    $reduceParams[] = $examId;
+                }
+                $reduceQuery .= ')';
+            } elseif ($studentId > 0 && $examId > 0) {
+                $reduceQuery .= ' AND student_id = ? AND (exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?))';
+                $reduceParams[] = $studentId;
+                $reduceParams[] = $examId;
+                $reduceParams[] = $examId;
+            }
+            $totalReducedMinutes = (int)Database::scalar($reduceQuery, $reduceParams);
+
+            Response::json([
+                'actions' => $result,
+                'is_locked' => $isLocked,
+                'total_reduced_minutes' => $totalReducedMinutes,
+            ]);
         } catch (\Throwable $e) {
             error_log('[TeacherActionController::check] Error: ' . $e->getMessage());
-            Response::json(['actions' => []]);
+            Response::json(['actions' => [], 'is_locked' => false, 'total_reduced_minutes' => 0]);
         }
     }
 
