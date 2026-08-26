@@ -200,8 +200,8 @@ final class TeacherActionController
     }
 
     /**
-     * GET /api/teacher/actions/check
-     * Plugin polls this endpoint. Query: ?session_id=xxx&account_id=xxx
+     * Set CORS headers for Moodle plugin requests.
+     */
     private static function corsHeaders(): void
     {
         $origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
