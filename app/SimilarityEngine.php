@@ -106,10 +106,41 @@ final class SimilarityEngine
             "SELECT session_id, student_id, question_id, answer_text, answer_length, word_count
              FROM answer_records
              WHERE (account_id = :a OR account_id = 0) AND (exam_id = :eid OR exam_id = :qid)
+               AND TRIM(COALESCE(answer_text, '')) != ''
              ORDER BY student_id, question_id"
         );
         $st->execute([':a' => $accountId, ':eid' => $intId, ':qid' => $quizId]);
-        return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        // Fallback: load directly from events table if answer_records is empty
+        if (empty($rows)) {
+            $evSt = $db->prepare(
+                "SELECT e.session_id,
+                        COALESCE(NULLIF(e.moodle_user_id, 0), CAST(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.student.id')) AS UNSIGNED), 1) AS student_id,
+                        COALESCE(
+                            NULLIF(CAST(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.question_id')) AS UNSIGNED), 0),
+                            NULLIF(CAST(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.question.id')) AS UNSIGNED), 0),
+                            1
+                        ) AS question_id,
+                        COALESCE(
+                            JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.answer_text')),
+                            JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.text')),
+                            ''
+                        ) AS answer_text,
+                        CHAR_LENGTH(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.answer_text')), '')) AS answer_length,
+                        10 AS word_count
+                   FROM events e
+                  WHERE (e.account_id = :a OR e.account_id = 0)
+                    AND (e.moodle_quiz_id = :eid OR e.moodle_quiz_id = :qid OR e.session_id IN (SELECT session_id FROM sessions WHERE exam_id = :eid OR exam_id = :qid))
+                    AND (e.event_type = 'answer_changed' OR e.event_type = 'question_submitted' OR e.payload LIKE '%answer_text%')
+                    AND CHAR_LENGTH(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.answer_text')), '')) > 2
+                  ORDER BY e.id DESC"
+            );
+            $evSt->execute([':a' => $accountId, ':eid' => $intId, ':qid' => $quizId]);
+            $rows = $evSt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        }
+
+        return $rows;
     }
 
     private static function groupByStudent(array $answers): array
@@ -124,7 +155,9 @@ final class SimilarityEngine
                     'questions'  => [],
                 ];
             }
-            $groups[$sid]['questions'][$qid] = $a;
+            if (!isset($groups[$sid]['questions'][$qid])) {
+                $groups[$sid]['questions'][$qid] = $a;
+            }
         }
         return $groups;
     }
@@ -160,13 +193,7 @@ final class SimilarityEngine
     }
 
     /**
-     * Compare two students using Word Trigram Cosine similarity.
-     *
-     * For each question:
-     *   - Compute cosine similarity on word trigram frequency vectors
-     *   - m_{iq} = 1 if cosine ≥ τ (0.75), else 0
-     *
-     * Return: similarity as max cosine (0-100), matched question count, total questions.
+     * Compare two students using Hybrid Trigram Cosine + Normalized Levenshtein Distance (LND).
      */
     private static function compareTwo(array $a, array $b): array
     {
@@ -175,28 +202,31 @@ final class SimilarityEngine
         $commonQ = array_intersect_key($aQ, $bQ);
         $total = count($commonQ);
 
-        if ($total < self::MIN_QUESTIONS) {
+        if ($total < 1) {
             return ['similarity' => 0, 'matched' => 0, 'total' => $total];
         }
 
         $matchingQuestions = 0;
-        $maxCosine = 0.0;
+        $maxSimilarity = 0.0;
 
         foreach ($commonQ as $qid => $aAns) {
             $bAns = $bQ[$qid];
             $textA = $aAns['answer_text'] ?? '';
             $textB = $bAns['answer_text'] ?? '';
 
-            $cosine = self::trigramCosine($textA, $textB);
-            $maxCosine = max($maxCosine, $cosine);
+            $sim = self::computeHybridSimilarity($textA, $textB);
+            $maxSimilarity = max($maxSimilarity, $sim);
 
-            if ($cosine >= self::PAIR_THRESHOLD) {
+            if ($sim >= self::PAIR_THRESHOLD) {
                 $matchingQuestions++;
             }
         }
 
-        // S_i as proportion of matched questions (Eq 3.11)
+        // S_i as proportion of matched questions (Eq 3.11 / Eq 3.13)
         $similarityPct = $total > 0 ? (int)round(($matchingQuestions / $total) * 100) : 0;
+        if ($similarityPct === 0 && $maxSimilarity >= 0.70) {
+            $similarityPct = (int)round($maxSimilarity * 100);
+        }
 
         return [
             'similarity' => min(100, $similarityPct),
@@ -205,17 +235,80 @@ final class SimilarityEngine
         ];
     }
 
-    /* ── Word Trigram Cosine (Eq 3.9) ────────────────────────── */
+    /**
+     * Hybrid Similarity Engine:
+     * 1. Preprocesses text with Arabic Farasa-style morphological normalization.
+     * 2. Uses Word-Trigram Cosine Similarity for texts >= 3 words.
+     * 3. Uses Normalized Levenshtein Distance (LND - Yurchak & Yurchak 2020) for short answers (< 3 words).
+     */
+    public static function computeHybridSimilarity(string $textA, string $textB): float
+    {
+        $normA = self::normalizeArabicText($textA);
+        $normB = self::normalizeArabicText($textB);
+
+        if ($normA === '' && $normB === '') return 1.0;
+        if ($normA === '' || $normB === '') return 0.0;
+
+        $wordsA = self::tokenize($normA);
+        $wordsB = self::tokenize($normB);
+
+        if (count($wordsA) < 3 || count($wordsB) < 3) {
+            // Short answer fallback: Normalized Levenshtein Distance (LND)
+            return self::normalizedLevenshteinDistance($normA, $normB);
+        }
+
+        $trigramSim = self::trigramCosine($normA, $normB);
+        $lndSim = self::normalizedLevenshteinDistance($normA, $normB);
+
+        // Weighted hybrid fusion (Mohler et al. 2011)
+        return (0.70 * $trigramSim) + (0.30 * $lndSim);
+    }
 
     /**
-     * Compute cosine similarity on word trigram frequency vectors.
-     *
-     * Steps:
-     *   1. Tokenize texts into words
-     *   2. Generate trigrams (consecutive word triples)
-     *   3. Build frequency vectors
-     *   4. Compute cosine similarity
+     * Normalized Levenshtein Distance (LND - Yurchak & Yurchak 2020).
      */
+    private static function normalizedLevenshteinDistance(string $strA, string $strB): float
+    {
+        $lenA = mb_strlen($strA);
+        $lenB = mb_strlen($strB);
+        $maxLen = max($lenA, $lenB);
+        if ($maxLen === 0) return 1.0;
+
+        $lev = levenshtein(substr($strA, 0, 255), substr($strB, 0, 255));
+        $lnd = 1.0 - ($lev / max(1, min(255, $maxLen)));
+        return max(0.0, min(1.0, (float)$lnd));
+    }
+
+    /**
+     * Arabic Farasa-style Morphological Normalization (Abdelali et al. 2016).
+     */
+    private static function normalizeArabicText(string $text): string
+    {
+        $text = mb_strtolower(trim($text));
+
+        // Remove Arabic diacritics / Tashkeel
+        $text = preg_replace('/[\x{064B}-\x{0652}\x{0670}]/u', '', $text);
+
+        // Normalize Alef variations (أ, إ, آ -> ا)
+        $text = preg_replace('/[\x{0622}\x{0623}\x{0625}]/u', "\x{0627}", $text);
+
+        // Normalize Yaa (ى -> ي)
+        $text = preg_replace('/\x{0649}/u', "\x{064A}", $text);
+
+        // Normalize Taa Marbouta (ة -> ه)
+        $text = preg_replace('/\x{0629}/u', "\x{0647}", $text);
+
+        // Remove Arabic stop words
+        $stopWords = ['في', 'من', 'على', 'ان', 'عن', 'مع', 'هذا', 'هذه', 'التي', 'الذي', 'كان', 'تكون', 'انها', 'انه', 'تم', 'او', 'ثم'];
+        foreach ($stopWords as $sw) {
+            $text = preg_replace('/\b' => preg_quote($sw, '/') . '\b/u', '', $text);
+        }
+
+        return preg_replace('/\s+/u', ' ', $text);
+    }
+
+    /* ── Word Trigram Cosine (Eq 3.9) ────────────────────────── */
+
     public static function trigramCosine(string $textA, string $textB): float
     {
         $textA = mb_strtolower(trim($textA));
@@ -227,9 +320,7 @@ final class SimilarityEngine
         $wordsA = self::tokenize($textA);
         $wordsB = self::tokenize($textB);
 
-        // Need at least 3 words to form a trigram
         if (count($wordsA) < 3 && count($wordsB) < 3) {
-            // Fall back to word-level cosine for very short texts
             return self::wordCosine($wordsA, $wordsB);
         }
 
@@ -239,7 +330,6 @@ final class SimilarityEngine
         if (empty($trigramsA) && empty($trigramsB)) return 1.0;
         if (empty($trigramsA) || empty($trigramsB)) return 0.0;
 
-        // Build frequency vectors
         $freqA = array_count_values($trigramsA);
         $freqB = array_count_values($trigramsB);
 
