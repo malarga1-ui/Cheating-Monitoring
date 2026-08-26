@@ -1385,41 +1385,33 @@ final class TeacherPortalController
 
         $name = ($course && !empty($course['name'])) ? $course['name'] : '';
 
-        // 2. Load exams for this course
+        // Enforce teacher access to this course
+        $myCourseIds = Teachers::courseIds($accountId, $teacherId);
+        if (!in_array($courseMoodleId, $myCourseIds, true) && !in_array($courseDbId, $myCourseIds, true)) {
+            Response::error('ليس لديك صلاحية على هذا المساق', 403);
+            return;
+        }
+
+        // 2. Load exams strictly for this course
         $exams = Database::fetchAll(
             "SELECT e.id, e.moodle_quiz_id, e.name, e.status,
                     e.first_event_at, e.last_event_at, e.created_at,
-                    (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id)) AS students_count,
-                    (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id) AND ss.risk_level IN ('high','critical')) AS suspicious_count,
-                    (SELECT COUNT(*) FROM events ev WHERE (ev.moodle_quiz_id = e.moodle_quiz_id OR ev.moodle_quiz_id = e.id)) AS events_count
+                    (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id) AND (ss.account_id = e.account_id OR ss.account_id = 0)) AS students_count,
+                    (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id) AND (ss.account_id = e.account_id OR ss.account_id = 0) AND ss.risk_level IN ('high','critical')) AS suspicious_count,
+                    (SELECT COUNT(*) FROM events ev WHERE (ev.moodle_quiz_id = e.moodle_quiz_id OR ev.moodle_quiz_id = e.id) AND (ev.account_id = e.account_id OR ev.account_id = 0)) AS events_count
                FROM exams e
-              WHERE e.moodle_course_id = ? OR e.moodle_course_id = ? OR e.moodle_quiz_id = ? OR e.id = ?
+              WHERE (e.account_id = ? OR e.account_id = 0)
+                AND (e.moodle_course_id = ? OR e.moodle_course_id = ?)
               ORDER BY e.last_event_at DESC, e.id DESC",
-            [$courseMoodleId, $courseDbId, $courseMoodleId, $courseDbId]
+            [$accountId, $courseMoodleId, $courseDbId]
         );
-
-        // Fallback: if no exams found by course ID, load teacher's exams
-        if (empty($exams)) {
-            $exams = Database::fetchAll(
-                "SELECT e.id, e.moodle_quiz_id, e.name, e.status,
-                        e.first_event_at, e.last_event_at, e.created_at,
-                        (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id)) AS students_count,
-                        (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id) AND ss.risk_level IN ('high','critical')) AS suspicious_count,
-                        (SELECT COUNT(*) FROM events ev WHERE (ev.moodle_quiz_id = e.moodle_quiz_id OR ev.moodle_quiz_id = e.id)) AS events_count
-                   FROM exams e
-                  WHERE (e.account_id = ? OR e.account_id = 0)
-                    AND (e.moodle_teacher_id = ? OR e.moodle_teacher_id IS NULL OR e.moodle_teacher_id = 0)
-                  ORDER BY e.last_event_at DESC, e.id DESC LIMIT 50",
-                [$accountId, $teacherId]
-            );
-        }
 
         // Fix student counts
         foreach ($exams as &$ex) {
             if ((int)$ex['students_count'] === 0 && (int)$ex['events_count'] > 0) {
                 $evCount = (int)Database::scalar(
-                    'SELECT COUNT(DISTINCT moodle_user_id) FROM events WHERE moodle_quiz_id = ? OR moodle_quiz_id = ?',
-                    [(int)$ex['moodle_quiz_id'], (int)$ex['id']]
+                    'SELECT COUNT(DISTINCT moodle_user_id) FROM events WHERE (moodle_quiz_id = ? OR moodle_quiz_id = ?) AND (account_id = ? OR account_id = 0)',
+                    [(int)$ex['moodle_quiz_id'], (int)$ex['id'], $accountId]
                 );
                 $ex['students_count'] = $evCount;
             }
@@ -1451,7 +1443,7 @@ final class TeacherPortalController
             [$courseMoodleId, $courseDbId]
         );
 
-        // Load students
+        // Load students strictly enrolled in or participating in this course
         $students = Database::fetchAll(
             "SELECT s.id AS student_id, s.moodle_user_id, s.fullname, s.username,
                     COUNT(DISTINCT ss.exam_id) AS exams_count,
@@ -1459,12 +1451,20 @@ final class TeacherPortalController
                     COALESCE(MAX(ss.risk_level), 'safe') AS risk_level
                FROM students s
                LEFT JOIN session_summaries ss ON (s.id = ss.student_id OR s.moodle_user_id = ss.student_id)
-               LEFT JOIN exams e ON (e.id = ss.exam_id OR e.moodle_quiz_id = ss.exam_id)
+                    AND ss.exam_id IN (SELECT id FROM exams WHERE (account_id = ? OR account_id = 0) AND (moodle_course_id = ? OR moodle_course_id = ?))
               WHERE (s.account_id = ? OR s.account_id = 0)
+                AND (
+                  IF(s.moodle_user_id > 0, s.moodle_user_id, s.id) IN (
+                    SELECT cs.student_id FROM course_students cs WHERE (cs.account_id = ? OR cs.account_id = 0) AND (cs.moodle_course_id = ? OR cs.moodle_course_id = ?)
+                  )
+                  OR s.moodle_user_id IN (
+                    SELECT ev.moodle_user_id FROM events ev WHERE (ev.account_id = ? OR ev.account_id = 0) AND (ev.moodle_course_id = ? OR ev.moodle_course_id = ?)
+                  )
+                )
                 AND s.username NOT IN (SELECT username FROM teachers WHERE (account_id = ? OR account_id = 0) AND username != '')
               GROUP BY s.id, s.moodle_user_id, s.fullname, s.username
               ORDER BY s.fullname ASC",
-            [$accountId, $accountId]
+            [$accountId, $courseMoodleId, $courseDbId, $accountId, $accountId, $courseMoodleId, $courseDbId, $accountId, $courseMoodleId, $courseDbId, $accountId]
         );
 
         Response::ok([
