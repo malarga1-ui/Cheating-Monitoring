@@ -202,18 +202,35 @@ final class TeacherActionController
     /**
      * GET /api/teacher/actions/check
      * Plugin polls this endpoint. Query: ?session_id=xxx&account_id=xxx
+    private static function corsHeaders(): void
+    {
+        $origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
+        header("Access-Control-Allow-Origin: $origin");
+        header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+        header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Exam-Monitor-Secret, X-Requested-With');
+        header('Access-Control-Allow-Credentials: true');
+        header('Access-Control-Max-Age: 86400');
+    }
+
+    /**
+     * GET/POST/OPTIONS /api/teacher/actions/check
+     * Plugin polls this endpoint. Query/Body: session_id, student_id, exam_id, secret
      * Returns pending actions for the given session.
      */
     public static function check(): void
     {
-        // This endpoint is called by the Moodle plugin with session-based auth.
-        // We verify via the API secret in the request header.
-        $secret = $_SERVER['HTTP_X_EXAM_MONITOR_SECRET'] ?? '';
+        self::corsHeaders();
+        if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
+            Response::empty(204);
+            return;
+        }
+
+        $secret = $_SERVER['HTTP_X_EXAM_MONITOR_SECRET'] ?? ($_GET['k'] ?? '');
         $body = em_body_json() ?? [];
         $pluginSecret = (string)($body['secret'] ?? $secret);
-        $sessionId = (int)($body['session_id'] ?? ($_GET['session_id'] ?? 0));
+        $sessionId = (string)($body['session_id'] ?? ($_GET['session_id'] ?? ''));
 
-        if ($pluginSecret === '' || $sessionId <= 0) {
+        if ($pluginSecret === '') {
             Response::json(['actions' => []]);
             return;
         }
@@ -225,14 +242,42 @@ final class TeacherActionController
         }
         $accountId = (int)$account['id'];
 
-        // Find pending actions for this session
-        $actions = Database::fetchAll(
-            'SELECT id, action_type, message, minutes_to_reduce, created_at
-             FROM teacher_actions
-             WHERE session_summary_id = ? AND account_id = ? AND status = "pending"
-             ORDER BY created_at ASC',
-            [$sessionId, $accountId]
-        );
+        $studentId = (int)($body['student_id'] ?? ($_GET['student_id'] ?? 0));
+        $examId = (int)($body['exam_id'] ?? ($_GET['exam_id'] ?? 0));
+
+        // Find pending actions for this session or student
+        $where = 'account_id = ? AND status = "pending"';
+        $params = [$accountId];
+
+        if ($sessionId !== '') {
+            $where .= ' AND (session_summary_id = ? OR session_summary_id IN (SELECT id FROM session_summaries WHERE session_id = ?)';
+            $params[] = is_numeric($sessionId) ? (int)$sessionId : 0;
+            $params[] = $sessionId;
+            if ($studentId > 0 && $examId > 0) {
+                $where .= ' OR (student_id = ? AND (exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?)))';
+                $params[] = $studentId;
+                $params[] = $examId;
+                $params[] = $examId;
+            }
+            $where .= ')';
+        } elseif ($studentId > 0 && $examId > 0) {
+            $where .= ' AND student_id = ? AND (exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?))';
+            $params[] = $studentId;
+            $params[] = $examId;
+            $params[] = $examId;
+        }
+
+        try {
+            $actions = Database::fetchAll(
+                "SELECT id, action_type, message, minutes_to_reduce, created_at
+                 FROM teacher_actions
+                 WHERE $where
+                 ORDER BY created_at ASC",
+                $params
+            );
+        } catch (\Throwable $e) {
+            $actions = [];
+        }
 
         // Mark them as delivered
         $result = [];
@@ -262,6 +307,12 @@ final class TeacherActionController
      */
     public static function acknowledge(string $idStr): void
     {
+        self::corsHeaders();
+        if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
+            Response::empty(204);
+            return;
+        }
+
         $id = (int)$idStr;
         if ($id <= 0) {
             Response::error('Invalid action ID', 400);
@@ -269,7 +320,8 @@ final class TeacherActionController
 
         // Verify via plugin secret
         $body = em_body_json() ?? [];
-        $pluginSecret = (string)($body['secret'] ?? '');
+        $secret = $_SERVER['HTTP_X_EXAM_MONITOR_SECRET'] ?? ($_GET['k'] ?? '');
+        $pluginSecret = (string)($body['secret'] ?? $secret);
         $account = Accounts::resolveBySecret($pluginSecret);
         if ($account === null) {
             Response::error('Unauthorized', 403);

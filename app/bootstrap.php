@@ -64,13 +64,48 @@ header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
 header("Content-Security-Policy: default-src 'self' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' https:; connect-src 'self' https:; frame-ancestors 'self';");
 
 // ---------------------------------------------------------------
-// JSON body reader
+// JSON body reader (supports raw JSON, gzip streams, and multipart FormData)
 // ---------------------------------------------------------------
 function em_body_json() {
+    // 1. Check for multipart FormData / file upload (e.g. gzip compressed sendBeacon)
+    if (!empty($_FILES['data']['tmp_name']) && is_uploaded_file($_FILES['data']['tmp_name'])) {
+        $raw = file_get_contents($_FILES['data']['tmp_name']);
+        if ($raw !== false && $raw !== '') {
+            if (str_starts_with($raw, "\x1f\x8b") || ($_POST['compressed'] ?? '') === 'gzip') {
+                $decoded = @gzdecode($raw);
+                if ($decoded !== false) $raw = $decoded;
+            }
+            $data = json_decode($raw, true);
+            if (is_array($data)) return $data;
+        }
+    }
+
+    // 2. Check for $_POST string data
+    if (!empty($_POST['data'])) {
+        $raw = (string)$_POST['data'];
+        $data = json_decode($raw, true);
+        if (is_array($data)) return $data;
+    }
+    if (!empty($_POST['events'])) {
+        if (is_array($_POST['events'])) return $_POST;
+        $decoded = json_decode((string)$_POST['events'], true);
+        if (is_array($decoded)) return ['events' => $decoded];
+    }
+
+    // 3. Check php://input (standard raw stream)
     $raw = file_get_contents('php://input');
     if ($raw === '' || $raw === false) {
-        return null;
+        return !empty($_POST) ? $_POST : null;
     }
+
+    // Handle gzip in php://input
+    if (str_starts_with($raw, "\x1f\x8b") || strtolower((string)($_SERVER['HTTP_CONTENT_ENCODING'] ?? '')) === 'gzip') {
+        $decoded = @gzdecode($raw);
+        if ($decoded !== false) {
+            $raw = $decoded;
+        }
+    }
+
     $data = json_decode($raw, true);
     return is_array($data) ? $data : null;
 }

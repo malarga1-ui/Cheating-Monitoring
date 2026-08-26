@@ -87,11 +87,11 @@ $router->get('/api/teacher/exams/{eid}/students/{sid}/ips', [TeacherPortalContro
 $router->get('/api/teacher/exams/{eid}/students/{sid}/answers', [TeacherPortalController::class, 'examStudentAnswers']);
 
 // ---- Teacher real-time actions (message, lock, reduce time) ------------------
+$router->any('/api/teacher/actions/check', [TeacherActionController::class, 'check']);
+$router->any('/api/teacher/actions/{id}/ack', [TeacherActionController::class, 'acknowledge']);
 $router->post('/api/teacher/actions/message', [TeacherActionController::class, 'sendMessage']);
 $router->post('/api/teacher/actions/lock', [TeacherActionController::class, 'lockExam']);
 $router->post('/api/teacher/actions/reduce-time', [TeacherActionController::class, 'reduceTime']);
-$router->post('/api/teacher/actions/check', [TeacherActionController::class, 'check']);
-$router->post('/api/teacher/actions/{id}/ack', [TeacherActionController::class, 'acknowledge']);
 $router->get('/api/teacher/actions/{examId}/log', [TeacherActionController::class, 'log']);
 
 // ---- SaaS accounts ---------------------------------------------------------
