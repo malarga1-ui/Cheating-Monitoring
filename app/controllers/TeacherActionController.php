@@ -225,49 +225,51 @@ final class TeacherActionController
             return;
         }
 
-        $secret = $_SERVER['HTTP_X_EXAM_MONITOR_SECRET'] ?? ($_GET['k'] ?? '');
-        $body = em_body_json() ?? [];
-        $pluginSecret = (string)($body['secret'] ?? $secret);
-        $sessionId = (string)($body['session_id'] ?? ($_GET['session_id'] ?? ''));
+        try {
+            self::ensureTables();
 
-        if ($pluginSecret === '') {
-            Response::json(['actions' => []]);
-            return;
-        }
+            $secret = $_SERVER['HTTP_X_EXAM_MONITOR_SECRET'] ?? ($_GET['k'] ?? '');
+            $body = em_body_json() ?? [];
+            $pluginSecret = (string)($body['secret'] ?? $secret);
+            $sessionId = (string)($body['session_id'] ?? ($_GET['session_id'] ?? ''));
 
-        $account = Accounts::resolveBySecret($pluginSecret);
-        if ($account === null) {
-            Response::json(['actions' => []]);
-            return;
-        }
-        $accountId = (int)$account['id'];
+            if ($pluginSecret === '') {
+                Response::json(['actions' => []]);
+                return;
+            }
 
-        $studentId = (int)($body['student_id'] ?? ($_GET['student_id'] ?? 0));
-        $examId = (int)($body['exam_id'] ?? ($_GET['exam_id'] ?? 0));
+            $account = Accounts::resolveBySecret($pluginSecret);
+            if ($account === null) {
+                Response::json(['actions' => []]);
+                return;
+            }
+            $accountId = (int)$account['id'];
 
-        // Find pending actions for this session or student
-        $where = 'account_id = ? AND status = "pending"';
-        $params = [$accountId];
+            $studentId = (int)($body['student_id'] ?? ($_GET['student_id'] ?? 0));
+            $examId = (int)($body['exam_id'] ?? ($_GET['exam_id'] ?? 0));
 
-        if ($sessionId !== '') {
-            $where .= ' AND (session_summary_id = ? OR session_summary_id IN (SELECT id FROM session_summaries WHERE session_id = ?)';
-            $params[] = is_numeric($sessionId) ? (int)$sessionId : 0;
-            $params[] = $sessionId;
-            if ($studentId > 0 && $examId > 0) {
-                $where .= ' OR (student_id = ? AND (exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?)))';
+            // Find pending actions for this session or student
+            $where = 'account_id = ? AND status = "pending"';
+            $params = [$accountId];
+
+            if ($sessionId !== '') {
+                $where .= ' AND (session_summary_id = ? OR session_summary_id IN (SELECT id FROM session_summaries WHERE session_id = ?)';
+                $params[] = is_numeric($sessionId) ? (int)$sessionId : 0;
+                $params[] = $sessionId;
+                if ($studentId > 0 && $examId > 0) {
+                    $where .= ' OR (student_id = ? AND (exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?)))';
+                    $params[] = $studentId;
+                    $params[] = $examId;
+                    $params[] = $examId;
+                }
+                $where .= ')';
+            } elseif ($studentId > 0 && $examId > 0) {
+                $where .= ' AND student_id = ? AND (exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?))';
                 $params[] = $studentId;
                 $params[] = $examId;
                 $params[] = $examId;
             }
-            $where .= ')';
-        } elseif ($studentId > 0 && $examId > 0) {
-            $where .= ' AND student_id = ? AND (exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?))';
-            $params[] = $studentId;
-            $params[] = $examId;
-            $params[] = $examId;
-        }
 
-        try {
             $actions = Database::fetchAll(
                 "SELECT id, action_type, message, minutes_to_reduce, created_at
                  FROM teacher_actions
@@ -275,30 +277,33 @@ final class TeacherActionController
                  ORDER BY created_at ASC",
                 $params
             );
+
+            // Mark them as delivered
+            $result = [];
+            foreach ($actions as $a) {
+                try {
+                    Database::execute(
+                        'UPDATE teacher_actions SET status = "delivered", delivered_at = NOW() WHERE id = ? AND status = "pending"',
+                        [(int)$a['id']]
+                    );
+                    Database::execute(
+                        'INSERT INTO teacher_action_log (action_id, event_type, created_at) VALUES (?, "delivered", NOW())',
+                        [(int)$a['id']]
+                    );
+                } catch (\Throwable $e) {}
+                $result[] = [
+                    'id' => (int)$a['id'],
+                    'action' => $a['action_type'],
+                    'message' => $a['message'],
+                    'minutes' => $a['minutes_to_reduce'] !== null ? (int)$a['minutes_to_reduce'] : null,
+                ];
+            }
+
+            Response::json(['actions' => $result]);
         } catch (\Throwable $e) {
-            $actions = [];
+            error_log('[TeacherActionController::check] Error: ' . $e->getMessage());
+            Response::json(['actions' => []]);
         }
-
-        // Mark them as delivered
-        $result = [];
-        foreach ($actions as $a) {
-            Database::execute(
-                'UPDATE teacher_actions SET status = "delivered", delivered_at = NOW() WHERE id = ? AND status = "pending"',
-                [(int)$a['id']]
-            );
-            Database::execute(
-                'INSERT INTO teacher_action_log (action_id, event_type, created_at) VALUES (?, "delivered", NOW())',
-                [(int)$a['id']]
-            );
-            $result[] = [
-                'id' => (int)$a['id'],
-                'action' => $a['action_type'],
-                'message' => $a['message'],
-                'minutes' => $a['minutes_to_reduce'] !== null ? (int)$a['minutes_to_reduce'] : null,
-            ];
-        }
-
-        Response::json(['actions' => $result]);
     }
 
     /**
@@ -313,30 +318,36 @@ final class TeacherActionController
             return;
         }
 
-        $id = (int)$idStr;
-        if ($id <= 0) {
-            Response::error('Invalid action ID', 400);
+        try {
+            self::ensureTables();
+            $id = (int)$idStr;
+            if ($id <= 0) {
+                Response::error('Invalid action ID', 400);
+            }
+
+            // Verify via plugin secret
+            $body = em_body_json() ?? [];
+            $secret = $_SERVER['HTTP_X_EXAM_MONITOR_SECRET'] ?? ($_GET['k'] ?? '');
+            $pluginSecret = (string)($body['secret'] ?? $secret);
+            $account = Accounts::resolveBySecret($pluginSecret);
+            if ($account === null) {
+                Response::error('Unauthorized', 403);
+            }
+
+            Database::execute(
+                'UPDATE teacher_actions SET status = "acknowledged", acknowledged_at = NOW() WHERE id = ? AND account_id = ? AND status = "delivered"',
+                [$id, (int)$account['id']]
+            );
+            Database::execute(
+                'INSERT INTO teacher_action_log (action_id, event_type, created_at) VALUES (?, "acknowledged", NOW())',
+                [$id]
+            );
+
+            Response::ok(['ok' => true]);
+        } catch (\Throwable $e) {
+            error_log('[TeacherActionController::acknowledge] Error: ' . $e->getMessage());
+            Response::ok(['ok' => true]);
         }
-
-        // Verify via plugin secret
-        $body = em_body_json() ?? [];
-        $secret = $_SERVER['HTTP_X_EXAM_MONITOR_SECRET'] ?? ($_GET['k'] ?? '');
-        $pluginSecret = (string)($body['secret'] ?? $secret);
-        $account = Accounts::resolveBySecret($pluginSecret);
-        if ($account === null) {
-            Response::error('Unauthorized', 403);
-        }
-
-        Database::execute(
-            'UPDATE teacher_actions SET status = "acknowledged", acknowledged_at = NOW() WHERE id = ? AND account_id = ? AND status = "delivered"',
-            [$id, (int)$account['id']]
-        );
-        Database::execute(
-            'INSERT INTO teacher_action_log (action_id, event_type, created_at) VALUES (?, "acknowledged", NOW())',
-            [$id]
-        );
-
-        Response::ok(['ok' => true]);
     }
 
     /**
