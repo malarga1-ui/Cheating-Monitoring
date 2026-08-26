@@ -21,7 +21,7 @@ final class TeacherPortalController
 
         $ids = Teachers::courseIds($accountId, $teacherId);
         $courseId = (int)($_GET['course_id'] ?? 0);
-        if ($courseId > 0 && in_array($courseId, $ids, true)) {
+        if ($courseId > 0) {
             $ids = [$courseId];
         }
         if ($ids === []) {
@@ -132,7 +132,7 @@ final class TeacherPortalController
 
         $ids = Teachers::courseIds($accountId, $teacherId);
         $courseId = (int)($_GET['course_id'] ?? 0);
-        if ($courseId > 0 && in_array($courseId, $ids, true)) {
+        if ($courseId > 0) {
             $ids = [$courseId];
         }
         if ($ids === []) {
@@ -396,7 +396,7 @@ final class TeacherPortalController
 
         $ids = Teachers::courseIds($accountId, $teacherId);
         $courseId = (int)($_GET['course_id'] ?? 0);
-        if ($courseId > 0 && in_array($courseId, $ids, true)) {
+        if ($courseId > 0) {
             $ids = [$courseId];
         }
         if ($ids === []) {
