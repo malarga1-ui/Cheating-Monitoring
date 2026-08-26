@@ -126,11 +126,19 @@ function Header({ courses = [] }) {
           </div>
         </div>
         <div className="ms-auto flex items-center gap-2">
+          <span className="hidden items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-extrabold text-emerald-700 ring-1 ring-emerald-200/70 sm:inline-flex">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+            </span>
+            بث مباشر لحظي
+          </span>
+
           <button onClick={toggle} className="hidden cursor-pointer items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-extrabold text-slate-600 hover:bg-slate-50 sm:inline-flex">{lang === 'ar' ? 'EN' : 'عربي'}</button>
           
-          <button onClick={handleSync} disabled={syncing} className="hidden items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-extrabold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 sm:flex">
+          <button onClick={handleSync} disabled={syncing} className="hidden items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-extrabold text-slate-700 hover:bg-slate-200 disabled:opacity-50 sm:flex">
             <svg className={syncing ? "animate-spin" : ""} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21v-5h5"/></svg>
-            مزامنة البيانات
+            مزامنة يدوية
           </button>
 
           <TeacherNotifications />
@@ -552,7 +560,12 @@ function StudentsList({ courseId: propCourseId }) {
 
   useEffect(() => {
     const url = '/api/teacher/students' + (courseId ? `?course_id=${courseId}` : '')
-    api.get(url).then(setData).catch(() => setData({ students: [], totals: {} }))
+    function load() {
+      api.get(url).then(setData).catch(() => { if (!data) setData({ students: [], totals: {} }) })
+    }
+    load()
+    const timer = setInterval(load, 4000)
+    return () => clearInterval(timer)
   }, [courseId])
 
   const students = useMemo(() => {
@@ -626,7 +639,7 @@ function ExamDetail() {
       }).catch(() => setStudents([]))
     }
     load()
-    const timer = setInterval(load, 5000)
+    const timer = setInterval(load, 3000)
     return () => clearInterval(timer)
   }, [id])
 
@@ -745,7 +758,12 @@ function CourseDetail() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    api.get(`/api/teacher/courses/${id}`).then(setData).catch(() => {})
+    function load() {
+      api.get(`/api/teacher/courses/${id}`).then(setData).catch(() => {})
+    }
+    load()
+    const timer = setInterval(load, 4000)
+    return () => clearInterval(timer)
   }, [id])
 
   if (!data) return <Spinner />
@@ -785,7 +803,12 @@ function StudentDetail() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    api.get(`/api/teacher/students/${id}`).then(setData).catch(() => {})
+    function load() {
+      api.get(`/api/teacher/students/${id}`).then(setData).catch(() => {})
+    }
+    load()
+    const timer = setInterval(load, 3000)
+    return () => clearInterval(timer)
   }, [id])
 
   if (!data) return <Spinner />

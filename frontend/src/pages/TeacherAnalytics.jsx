@@ -84,12 +84,17 @@ export default function TeacherAnalytics({ courseId: propCourseId, examId: propE
     } else if (courseId) {
       url += `?course_id=${courseId}`
     }
-    api.get(url)
-      .then(setData)
-      .catch((e) => setErr(e.message || 'تعذر تحميل البيانات'))
+    function load() {
+      api.get(url)
+        .then(setData)
+        .catch((e) => { if (!data) setErr(e.message || 'تعذر تحميل البيانات') })
+    }
+    load()
+    const timer = setInterval(load, 4000)
+    return () => clearInterval(timer)
   }, [examId, courseId])
 
-  if (err) return <div className="rounded-2xl bg-rose-50 p-6 text-center"><p className="text-sm font-bold text-rose-600">{err}</p></div>
+  if (err && !data) return <div className="rounded-2xl bg-rose-50 p-6 text-center"><p className="text-sm font-bold text-rose-600">{err}</p></div>
   if (!data) return <Spinner />
 
   const t = data.totals || {}
@@ -106,20 +111,22 @@ export default function TeacherAnalytics({ courseId: propCourseId, examId: propE
     <div className="space-y-8">
       {/* Header */}
       <Reveal>
-        <header>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-extrabold text-slate-800">التحليلات والتقارير</h1>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"/>
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500"/>
+        <header className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-extrabold text-slate-800">التحليلات والتقارير المتقدمة</h1>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"/>
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"/>
+                </span>
+                بث مباشر لحظي
               </span>
-              الرصد نشط
-            </span>
+            </div>
+            <p className="mt-1 text-sm text-slate-500">
+              نظرة شاملة على مؤشرات الغش والنزاهة الأكاديمية عبر جميع امتحاناتك ومادتك التعليمية
+            </p>
           </div>
-          <p className="mt-1 text-sm text-slate-500">
-            نظرة شاملة على مؤشرات الغش عبر جميع امتحاناتك ومادتك التعليمية
-          </p>
         </header>
       </Reveal>
 

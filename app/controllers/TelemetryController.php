@@ -57,6 +57,8 @@ final class TelemetryController
 
         try {
             $result = Ingest::ingestPayload($events, (int)$account['id']);
+            // Immediately run incremental aggregation for 100% real-time risk scores & summaries
+            try { Aggregator::process(200); } catch (\Throwable $e) {}
         } catch (Throwable $e) {
             error_log('[ExamMonitor] Telemetry ingest failed: ' . $e->getMessage());
             Response::empty(500);
