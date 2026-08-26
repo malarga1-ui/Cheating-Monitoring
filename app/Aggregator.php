@@ -851,7 +851,7 @@ final class Aggregator
     }
 
     /**
-     * Save IP snapshots from ip_snapshot events for multi-device detection.
+     * Save IP snapshots from events for multi-device detection.
      */
     private static function saveIPSnapshots(array $sessionCounters): void
     {
@@ -865,11 +865,11 @@ final class Aggregator
 
             if ($examId <= 0) continue;
 
-            // Fetch ip_snapshot events for this session
+            // Fetch events for this session
             $st = $pdo->prepare(
-                "SELECT id, ip_address, payload, event_time
+                "SELECT id, ip_address, user_agent, payload, event_time
                  FROM events
-                 WHERE session_id = :s AND account_id = :a AND event_type = 'ip_snapshot'
+                 WHERE session_id = :s AND (account_id = :a OR account_id = 0)
                  ORDER BY id"
             );
             $st->execute([':s' => $sessionId, ':a' => $accountId]);
@@ -897,9 +897,10 @@ final class Aggregator
             foreach ($events as $ev) {
                 $payload = json_decode($ev['payload'], true) ?: [];
                 $meta = $payload['metadata'] ?? [];
+                $telemetry = $meta['device_telemetry'] ?? [];
 
-                $ua = $meta['user_agent'] ?? '';
-                $fp = $meta['browser_fingerprint'] ?? '';
+                $ua = $ev['user_agent'] ?: ($meta['user_agent'] ?? ($payload['browser']['user_agent'] ?? ''));
+                $fp = $telemetry['fingerprint_hash'] ?? ($meta['browser_fingerprint'] ?? ($meta['fingerprint_hash'] ?? ''));
 
                 // Prefer server-side HTTP IP (always accurate) over browser WebRTC (often 'unknown')
                 $ip = $ev['ip_address'] ?: ($meta['ip_address'] ?? '');
@@ -949,7 +950,7 @@ final class Aggregator
             $st = $pdo->prepare(
                 "SELECT id, payload, event_time
                  FROM events
-                 WHERE session_id = :s AND account_id = :a AND event_type = 'answer_changed'
+                 WHERE session_id = :s AND (account_id = :a OR account_id = 0) AND event_type = 'answer_changed'
                  ORDER BY id"
             );
             $st->execute([':s' => $sessionId, ':a' => $accountId]);
@@ -982,17 +983,17 @@ final class Aggregator
                 $payload = json_decode($ev['payload'], true) ?: [];
                 $meta = $payload['metadata'] ?? [];
 
-                $questionId   = $meta['question_id'] ?? $meta['questionId'] ?? '';
-                $questionType = $meta['question_type'] ?? $meta['questionType'] ?? ($meta['question']['question_type'] ?? ($meta['question']['questionType'] ?? ''));
-                $answerText   = $meta['answer_text'] ?? $meta['answerText'] ?? $meta['value'] ?? '';
-                $wordCount    = $meta['word_count'] ?? $meta['wordCount'] ?? 0;
+                $questionId   = $meta['question_id'] ?? $meta['questionId'] ?? ($meta['question']['question_dom_id'] ?? ($meta['question']['question_number'] ?? 'q1'));
+                $questionType = $meta['question_type'] ?? $meta['questionType'] ?? ($meta['question']['question_type'] ?? 'multichoice');
+                $answerText   = $meta['answer_text'] ?? $meta['answerText'] ?? ($meta['answer']['answer_text'] ?? ($meta['answer']['answer_value'] ?? ($meta['value'] ?? '')));
+                $wordCount    = $meta['word_count'] ?? $meta['wordCount'] ?? ($meta['answer']['word_count'] ?? 0);
                 $changeCount  = $meta['change_count'] ?? $meta['changeCount'] ?? 1;
                 $typeDuration = $meta['typing_duration_ms'] ?? $meta['typingDurationMs'] ?? 0;
 
                 if ($answerText === '' && $questionId === '') continue;
 
                 $answerLen = mb_strlen($answerText);
-                if ($answerText !== '') {
+                if ($answerText !== '' && $wordCount === 0) {
                     $wordCount = AIDetector::countWords($answerText);
                 }
 

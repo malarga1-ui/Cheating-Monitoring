@@ -81,12 +81,19 @@ final class Ingest
             );
 
             foreach ($events as $ev) {
-                $eventType = $ev['event_type'] ?? '';
-                if ($eventType !== 'heartbeat' && $eventType !== 'page_leave') continue;
-
                 $metadata = $ev['metadata'] ?? [];
                 $telemetry = $metadata['device_telemetry'] ?? null;
-                if (!is_array($telemetry)) continue;
+                if (!is_array($telemetry)) {
+                    $telemetry = [
+                        'fingerprint_hash' => $metadata['fingerprint_hash'] ?? ($ev['browser']['user_agent'] ?? ''),
+                        'screen_resolution' => $metadata['screen_resolution'] ?? '',
+                        'client_timezone' => $metadata['client_timezone'] ?? '',
+                        'device_memory_gb' => $metadata['device_memory_gb'] ?? null,
+                        'cpu_cores' => $metadata['cpu_cores'] ?? null,
+                        'language' => $ev['browser']['language'] ?? '',
+                        'platform' => $ev['browser']['platform'] ?? '',
+                    ];
+                }
 
                 $moodle = $ev['moodle'] ?? [];
                 $student = $moodle['student'] ?? [];

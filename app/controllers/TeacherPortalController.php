@@ -1228,6 +1228,7 @@ final class TeacherPortalController
         if (!$student) { Response::error('الطالب غير موجود أو غير مسجل في مساقاتك', 404); return; }
 
         $actualStudentId = (int)$student['id'];
+        $moodleUserId = (int)$student['moodle_user_id'];
 
         $sessions = Database::fetchAll(
             "SELECT ss.session_id, ss.exam_id, ss.ip_address, e.name AS exam_name, e.moodle_course_id,
@@ -1239,11 +1240,11 @@ final class TeacherPortalController
                     ss.tab_hidden_count, ss.paste_count, ss.copy_count, ss.devtools_count,
                     ss.answer_text_count, ss.typing_answer_ratio
                FROM session_summaries ss
-               JOIN exams e ON e.id = ss.exam_id
-               LEFT JOIN courses c ON c.moodle_course_id = e.moodle_course_id AND c.account_id = e.account_id
-              WHERE ss.student_id = ? AND ss.account_id = ? AND e.moodle_course_id IN ($in)
+               JOIN exams e ON (e.id = ss.exam_id OR e.moodle_quiz_id = ss.exam_id)
+               LEFT JOIN courses c ON c.moodle_course_id = e.moodle_course_id AND (c.account_id = e.account_id OR c.account_id = 0)
+              WHERE (ss.student_id = ? OR ss.student_id = ?) AND (ss.account_id = ? OR ss.account_id = 0) AND e.moodle_course_id IN ($in)
               ORDER BY ss.first_event_at DESC",
-            [$actualStudentId, $accountId]
+            [$actualStudentId, $moodleUserId, $accountId]
         );
 
         $lastIp = Database::scalar(
@@ -1253,7 +1254,7 @@ final class TeacherPortalController
                 (SELECT ip.ip_address FROM ip_snapshots ip WHERE (ip.student_id = ? OR ip.student_id = ?) AND ip.ip_address IS NOT NULL AND ip.ip_address != '' ORDER BY ip.id DESC LIMIT 1),
                 '192.168.1.105'
             )",
-            [$actualStudentId, (int)$student['moodle_user_id'], $actualStudentId, (int)$student['moodle_user_id'], $actualStudentId, (int)$student['moodle_user_id']]
+            [$actualStudentId, $moodleUserId, $actualStudentId, $moodleUserId, $actualStudentId, $moodleUserId]
         );
 
         $agg = Database::fetchOne(
@@ -1273,9 +1274,9 @@ final class TeacherPortalController
                 MIN(ss.first_event_at) AS first_seen,
                 MAX(ss.last_event_at) AS last_seen
                FROM session_summaries ss
-               JOIN exams e ON e.id = ss.exam_id
-              WHERE ss.student_id = ? AND ss.account_id = ? AND e.moodle_course_id IN ($in)",
-            [$actualStudentId, $accountId]
+               JOIN exams e ON (e.id = ss.exam_id OR e.moodle_quiz_id = ss.exam_id)
+              WHERE (ss.student_id = ? OR ss.student_id = ?) AND (ss.account_id = ? OR ss.account_id = 0) AND e.moodle_course_id IN ($in)",
+            [$actualStudentId, $moodleUserId, $accountId]
         );
 
         $answers = Database::fetchAll(
@@ -1286,14 +1287,14 @@ final class TeacherPortalController
                FROM answer_records ar
                INNER JOIN (
                   SELECT MAX(id) AS max_id FROM answer_records
-                  WHERE student_id = ? AND account_id = ?
+                  WHERE (student_id = ? OR student_id = ?) AND (account_id = ? OR account_id = 0)
                   GROUP BY question_id
                ) latest ON ar.id = latest.max_id
-               JOIN exams e ON e.id = ar.exam_id AND e.account_id = ar.account_id
-              WHERE ar.student_id = ? AND ar.account_id = ? AND e.moodle_course_id IN ($in)
+               JOIN exams e ON (e.id = ar.exam_id OR e.moodle_quiz_id = ar.exam_id)
+              WHERE (ar.student_id = ? OR ar.student_id = ?) AND (ar.account_id = ? OR ar.account_id = 0) AND e.moodle_course_id IN ($in)
               ORDER BY ar.created_at DESC
               LIMIT 100",
-            [$actualStudentId, $accountId, $actualStudentId, $accountId]
+            [$actualStudentId, $moodleUserId, $accountId, $actualStudentId, $moodleUserId, $accountId]
         );
 
         Response::ok([
