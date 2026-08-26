@@ -47,8 +47,8 @@ final class TeacherActionController
     private static function requireExamOwnership(int $accountId, int $teacherId, int $examId): array
     {
         $exam = Database::fetchOne(
-            'SELECT * FROM exams WHERE id = ? AND account_id = ?',
-            [$examId, $accountId]
+            'SELECT * FROM exams WHERE (id = ? OR moodle_quiz_id = ?) AND (account_id = ? OR account_id = 0)',
+            [$examId, $examId, $accountId]
         );
         if ($exam === null) {
             Response::error('الامتحان غير موجود', 404);
@@ -78,24 +78,33 @@ final class TeacherActionController
         $body = em_body_json() ?? [];
 
         $examId = (int)($body['exam_id'] ?? 0);
-        $sessionId = (int)($body['session_summary_id'] ?? 0);
-        $studentId = (int)($body['student_id'] ?? 0);
+        $studentId = (int)($body['student_id'] ?? ($body['studentId'] ?? ($body['id'] ?? 0)));
+        $sessionId = (int)($body['session_summary_id'] ?? ($body['sessionId'] ?? 0));
         $message = trim((string)($body['message'] ?? ''));
 
-        if ($examId <= 0 || $sessionId <= 0 || $studentId <= 0 || $message === '') {
-            Response::error('جميع الحقول مطلوبة', 422);
+        if ($examId <= 0 || $studentId <= 0 || $message === '') {
+            Response::error('رقم الامتحان ورقم الطالب ونص الرسالة مطلوبان', 422);
         }
         if (mb_strlen($message) > 500) {
             Response::error('الرسالة لا يجب أن تتجاوز 500 حرف', 422);
         }
 
-        self::requireExamOwnership($accountId, $teacherId, $examId);
+        $exam = self::requireExamOwnership($accountId, $teacherId, $examId);
+        $internalExamId = (int)$exam['id'];
+
+        if ($sessionId <= 0) {
+            $foundId = Database::scalar(
+                'SELECT id FROM session_summaries WHERE (exam_id = ? OR exam_id = ?) AND (student_id = ? OR student_id IN (SELECT id FROM students WHERE moodle_user_id = ?)) ORDER BY id DESC LIMIT 1',
+                [$internalExamId, (int)$exam['moodle_quiz_id'], $studentId, $studentId]
+            );
+            $sessionId = $foundId ? (int)$foundId : 0;
+        }
 
         Database::execute(
             'INSERT INTO teacher_actions
                 (account_id, exam_id, session_summary_id, student_id, teacher_id, action_type, message, status, created_at)
              VALUES (?, ?, ?, ?, ?, "send_message", ?, "pending", NOW())',
-            [$accountId, $examId, $sessionId, $studentId, $teacherId, $message]
+            [$accountId, $internalExamId, $sessionId, $studentId, $teacherId, $message]
         );
         $actionId = (int)Database::scalar('SELECT LAST_INSERT_ID()');
 
@@ -121,20 +130,29 @@ final class TeacherActionController
         $body = em_body_json() ?? [];
 
         $examId = (int)($body['exam_id'] ?? 0);
-        $sessionId = (int)($body['session_summary_id'] ?? 0);
-        $studentId = (int)($body['student_id'] ?? 0);
+        $studentId = (int)($body['student_id'] ?? ($body['studentId'] ?? ($body['id'] ?? 0)));
+        $sessionId = (int)($body['session_summary_id'] ?? ($body['sessionId'] ?? 0));
 
-        if ($examId <= 0 || $sessionId <= 0 || $studentId <= 0) {
-            Response::error('جميع الحقول مطلوبة', 422);
+        if ($examId <= 0 || $studentId <= 0) {
+            Response::error('رقم الامتحان ورقم الطالب مطلوبان', 422);
         }
 
-        self::requireExamOwnership($accountId, $teacherId, $examId);
+        $exam = self::requireExamOwnership($accountId, $teacherId, $examId);
+        $internalExamId = (int)$exam['id'];
+
+        if ($sessionId <= 0) {
+            $foundId = Database::scalar(
+                'SELECT id FROM session_summaries WHERE (exam_id = ? OR exam_id = ?) AND (student_id = ? OR student_id IN (SELECT id FROM students WHERE moodle_user_id = ?)) ORDER BY id DESC LIMIT 1',
+                [$internalExamId, (int)$exam['moodle_quiz_id'], $studentId, $studentId]
+            );
+            $sessionId = $foundId ? (int)$foundId : 0;
+        }
 
         // Check for existing pending lock
         $existing = Database::fetchOne(
             'SELECT id FROM teacher_actions
-             WHERE exam_id = ? AND session_summary_id = ? AND action_type = "lock_exam" AND status = "pending"',
-            [$examId, $sessionId]
+             WHERE exam_id = ? AND (student_id = ? OR (session_summary_id > 0 AND session_summary_id = ?)) AND action_type = "lock_exam" AND status = "pending"',
+            [$internalExamId, $studentId, $sessionId]
         );
         if ($existing !== null) {
             Response::error('يوجد طلب قفل معلق بالفعل لهذا الطالب', 409);
@@ -144,7 +162,7 @@ final class TeacherActionController
             'INSERT INTO teacher_actions
                 (account_id, exam_id, session_summary_id, student_id, teacher_id, action_type, status, created_at)
              VALUES (?, ?, ?, ?, ?, "lock_exam", "pending", NOW())',
-            [$accountId, $examId, $sessionId, $studentId, $teacherId]
+            [$accountId, $internalExamId, $sessionId, $studentId, $teacherId]
         );
         $actionId = (int)Database::scalar('SELECT LAST_INSERT_ID()');
 
@@ -170,24 +188,33 @@ final class TeacherActionController
         $body = em_body_json() ?? [];
 
         $examId = (int)($body['exam_id'] ?? 0);
-        $sessionId = (int)($body['session_summary_id'] ?? 0);
-        $studentId = (int)($body['student_id'] ?? 0);
+        $studentId = (int)($body['student_id'] ?? ($body['studentId'] ?? ($body['id'] ?? 0)));
+        $sessionId = (int)($body['session_summary_id'] ?? ($body['sessionId'] ?? 0));
         $minutes = (int)($body['minutes'] ?? 0);
 
-        if ($examId <= 0 || $sessionId <= 0 || $studentId <= 0 || $minutes <= 0) {
-            Response::error('جميع الحقول مطلوبة وعدد الدقائق يجب أن يكون أكبر من صفر', 422);
+        if ($examId <= 0 || $studentId <= 0 || $minutes <= 0) {
+            Response::error('رقم الامتحان ورقم الطالب وعدد الدقائق مطلوبون', 422);
         }
         if ($minutes > 60) {
             Response::error('لا يمكن تقليص أكثر من 60 دقيقة في المرة الواحدة', 422);
         }
 
-        self::requireExamOwnership($accountId, $teacherId, $examId);
+        $exam = self::requireExamOwnership($accountId, $teacherId, $examId);
+        $internalExamId = (int)$exam['id'];
+
+        if ($sessionId <= 0) {
+            $foundId = Database::scalar(
+                'SELECT id FROM session_summaries WHERE (exam_id = ? OR exam_id = ?) AND (student_id = ? OR student_id IN (SELECT id FROM students WHERE moodle_user_id = ?)) ORDER BY id DESC LIMIT 1',
+                [$internalExamId, (int)$exam['moodle_quiz_id'], $studentId, $studentId]
+            );
+            $sessionId = $foundId ? (int)$foundId : 0;
+        }
 
         Database::execute(
             'INSERT INTO teacher_actions
                 (account_id, exam_id, session_summary_id, student_id, teacher_id, action_type, minutes_to_reduce, status, created_at)
              VALUES (?, ?, ?, ?, ?, "reduce_time", ?, "pending", NOW())',
-            [$accountId, $examId, $sessionId, $studentId, $teacherId, $minutes]
+            [$accountId, $internalExamId, $sessionId, $studentId, $teacherId, $minutes]
         );
         $actionId = (int)Database::scalar('SELECT LAST_INSERT_ID()');
 

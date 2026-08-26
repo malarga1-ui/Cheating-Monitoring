@@ -73,8 +73,12 @@ final class Router
                     // Handler expects array $params — pass associative array
                     $route['handler']($named);
                 } else {
-                    // Handler expects individual typed params — pass values in order
-                    $route['handler'](...array_values($named));
+                    // Handler expects individual typed params — pass values in order, auto-casting numeric strings to int
+                    $args = [];
+                    foreach ($named as $val) {
+                        $args[] = (is_numeric($val) && (string)(int)$val === $val) ? (int)$val : $val;
+                    }
+                    $route['handler'](...$args);
                 }
                 return;
             }
