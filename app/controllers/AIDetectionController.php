@@ -49,9 +49,9 @@ final class AIDetectionController
         $questionId  = (string)($input['question_id'] ?? '');
         $questionType = (string)($input['question_type'] ?? '');
 
-        // Guard: only analyze essay-type questions with 30+ words
-        $wordCount = str_word_count(trim($answerText));
-        if ($wordCount < 30) {
+        // Guard: only analyze essay-type questions with 10+ words
+        $wordCount = AIDetector::countWords(trim($answerText));
+        if ($wordCount < 10) {
             echo json_encode([
                 'ai_score'   => 0.0,
                 'status'     => 'SKIPPED',

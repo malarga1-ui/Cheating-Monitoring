@@ -614,12 +614,19 @@ final class CognitiveAnalyzer
     {
         $db = Database::connection();
 
+        $exam = Database::fetchOne(
+            'SELECT id, moodle_quiz_id, account_id FROM exams WHERE id = ? OR moodle_quiz_id = ? ORDER BY (account_id = ?) DESC LIMIT 1',
+            [$examId, $examId, $accountId]
+        );
+        $intId = $exam ? (int)$exam['id'] : $examId;
+        $quizId = $exam ? (int)$exam['moodle_quiz_id'] : $examId;
+
         // Get all sessions for this exam
         $stmt = $db->prepare(
             "SELECT session_id, student_id FROM session_summaries
-             WHERE exam_id = :e AND account_id = :a"
+             WHERE (exam_id = :eid OR exam_id = :qid) AND (account_id = :a OR account_id = 0)"
         );
-        $stmt->execute([':e' => $examId, ':a' => $accountId]);
+        $stmt->execute([':eid' => $intId, ':qid' => $quizId, ':a' => $accountId]);
         $sessions = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
         if (empty($sessions)) {
@@ -654,17 +661,17 @@ final class CognitiveAnalyzer
                 "SELECT question_id, question_type, answer_text, word_count, answer_length,
                         typing_duration_ms, paste_length, copy_count_from_question, created_at
                  FROM answer_records
-                 WHERE session_id = :s AND account_id = :a AND exam_id = :e
+                 WHERE session_id = :s AND (account_id = :a OR account_id = 0) AND (exam_id = :eid OR exam_id = :qid)
                  ORDER BY created_at"
             );
-            $recSt->execute([':s' => $sid, ':a' => $accountId, ':e' => $examId]);
+            $recSt->execute([':s' => $sid, ':a' => $accountId, ':eid' => $intId, ':qid' => $quizId]);
             $records = $recSt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
             // Get answer_changed events for timeline
             $evSt = $db->prepare(
                 "SELECT payload, event_time, event_type
                  FROM events
-                 WHERE session_id = :s AND account_id = :a AND event_type = 'answer_changed'
+                 WHERE session_id = :s AND (account_id = :a OR account_id = 0) AND event_type = 'answer_changed'
                  ORDER BY event_time"
             );
             $evSt->execute([':s' => $sid, ':a' => $accountId]);

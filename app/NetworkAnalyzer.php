@@ -24,10 +24,17 @@ final class NetworkAnalyzer
     {
         $db = Database::connection();
 
-        $groups = self::buildIPGroups($db, $accountId, $examId);
-        $sessions = self::scoreSessions($db, $accountId, $examId, $groups);
+        $exam = Database::fetchOne(
+            'SELECT id, moodle_quiz_id, account_id FROM exams WHERE id = ? OR moodle_quiz_id = ? ORDER BY (account_id = ?) DESC LIMIT 1',
+            [$examId, $examId, $accountId]
+        );
+        $intId = $exam ? (int)$exam['id'] : $examId;
+        $quizId = $exam ? (int)$exam['moodle_quiz_id'] : $examId;
 
-        self::persistGroups($db, $accountId, $examId, $groups);
+        $groups = self::buildIPGroups($db, $accountId, $intId, $quizId);
+        $sessions = self::scoreSessions($db, $accountId, $intId, $quizId, $groups);
+
+        self::persistGroups($db, $accountId, $intId, $groups);
         self::persistSessionScores($db, $sessions);
 
         return [
@@ -44,7 +51,7 @@ final class NetworkAnalyzer
         $db = Database::connection();
 
         $summary = $db->prepare(
-            'SELECT account_id, exam_id, ip_address FROM session_summaries WHERE session_id = ? AND account_id = ?'
+            'SELECT account_id, exam_id, ip_address FROM session_summaries WHERE session_id = ? AND (account_id = ? OR account_id = 0)'
         );
         $summary->execute([$sessionId, $accountId]);
         $row = $summary->fetch(PDO::FETCH_ASSOC);
@@ -53,13 +60,16 @@ final class NetworkAnalyzer
         }
 
         $examId = (int)$row['exam_id'];
+        $exam = Database::fetchOne('SELECT id, moodle_quiz_id FROM exams WHERE id = ? OR moodle_quiz_id = ? LIMIT 1', [$examId, $examId]);
+        $intId = $exam ? (int)$exam['id'] : $examId;
+        $quizId = $exam ? (int)$exam['moodle_quiz_id'] : $examId;
 
         // z_IP: check if IP changed
         $ips = self::getSessionIPs($db, $sessionId);
         $zIP = count($ips) > 1 ? 1 : 0;
 
         // z_CS: check for concurrent active sessions
-        $zCS = self::detectConcurrentSessions($db, $accountId, $examId, $sessionId);
+        $zCS = self::detectConcurrentSessions($db, $accountId, $intId, $quizId, $sessionId);
 
         $score = ($zIP + $zCS) / 2.0;
         $scorePct = (int)round($score * 100);
@@ -89,11 +99,11 @@ final class NetworkAnalyzer
      * Check for concurrent active sessions for same student (Eq 3.14).
      * z_CS = 1 if the same student has overlapping active sessions.
      */
-    private static function detectConcurrentSessions(PDO $db, int $accountId, int $examId, string $sessionId): int
+    private static function detectConcurrentSessions(PDO $db, int $accountId, int $intId, int $quizId, string $sessionId): int
     {
         // Get student_id for this session
         $st = $db->prepare(
-            "SELECT student_id FROM session_summaries WHERE session_id = :s AND account_id = :a"
+            "SELECT student_id FROM session_summaries WHERE session_id = :s AND (account_id = :a OR account_id = 0)"
         );
         $st->execute([':s' => $sessionId, ':a' => $accountId]);
         $row = $st->fetch(PDO::FETCH_ASSOC);
@@ -102,14 +112,13 @@ final class NetworkAnalyzer
         $studentId = (int)$row['student_id'];
 
         // Count other active sessions for same student in same exam
-        // "Active" means session started within the exam window and has recent events
         $st2 = $db->prepare(
             "SELECT COUNT(DISTINCT session_id) as cnt
              FROM session_summaries
-             WHERE account_id = :a AND exam_id = :e AND student_id = :sid
+             WHERE (account_id = :a OR account_id = 0) AND (exam_id = :eid OR exam_id = :qid) AND student_id = :sid
                AND session_id != :s"
         );
-        $st2->execute([':a' => $accountId, ':e' => $examId, ':sid' => $studentId, ':s' => $sessionId]);
+        $st2->execute([':a' => $accountId, ':eid' => $intId, ':qid' => $quizId, ':sid' => $studentId, ':s' => $sessionId]);
         $otherSessions = (int)$st2->fetchColumn();
 
         return $otherSessions > 0 ? 1 : 0;
@@ -117,26 +126,26 @@ final class NetworkAnalyzer
 
     /* ── IP Groups ────────────────────────────────────────────── */
 
-    private static function buildIPGroups(PDO $db, int $accountId, int $examId): array
+    private static function buildIPGroups(PDO $db, int $accountId, int $intId, int $quizId): array
     {
         $rows = $db->prepare(
             "SELECT session_id, student_id, ip_address, detected_at
              FROM ip_snapshots
-             WHERE account_id = :a AND exam_id = :e
+             WHERE (account_id = :a OR account_id = 0) AND (exam_id = :eid OR exam_id = :qid)
              ORDER BY detected_at"
         );
-        $rows->execute([':a' => $accountId, ':e' => $examId]);
+        $rows->execute([':a' => $accountId, ':eid' => $intId, ':qid' => $quizId]);
         $snapshots = $rows->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
         if (empty($snapshots)) {
             $rows = $db->prepare(
                 "SELECT session_id, moodle_user_id AS student_id, ip_address, event_time AS detected_at
                  FROM events
-                 WHERE account_id = :a AND moodle_quiz_id = :e AND ip_address != ''
+                 WHERE (account_id = :a OR account_id = 0) AND (moodle_quiz_id = :qid OR moodle_quiz_id = :eid) AND ip_address != '' AND ip_address != 'unknown'
                  GROUP BY session_id, moodle_user_id, ip_address
                  ORDER BY event_time"
             );
-            $rows->execute([':a' => $accountId, ':e' => $examId]);
+            $rows->execute([':a' => $accountId, ':qid' => $quizId, ':eid' => $intId]);
             $snapshots = $rows->fetchAll(PDO::FETCH_ASSOC) ?: [];
         }
 
@@ -169,7 +178,7 @@ final class NetworkAnalyzer
 
     /* ── Scoring ─────────────────────────────────────────────── */
 
-    private static function scoreSessions(PDO $db, int $accountId, int $examId, array $groups): array
+    private static function scoreSessions(PDO $db, int $accountId, int $intId, int $quizId, array $groups): array
     {
         $ipCounts = [];
         foreach ($groups as $g) {
@@ -179,9 +188,9 @@ final class NetworkAnalyzer
         $sessions = $db->prepare(
             "SELECT ss.session_id, ss.student_id, ss.ip_address
              FROM session_summaries ss
-             WHERE ss.exam_id = :e AND ss.account_id = :a"
+             WHERE (ss.exam_id = :eid OR ss.exam_id = :qid) AND (ss.account_id = :a OR ss.account_id = 0)"
         );
-        $sessions->execute([':e' => $examId, ':a' => $accountId]);
+        $sessions->execute([':eid' => $intId, ':qid' => $quizId, ':a' => $accountId]);
         $rows = $sessions->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
         // Bulk-fetch IPs from ip_snapshots for sessions with empty ip_address
@@ -215,11 +224,16 @@ final class NetworkAnalyzer
             $zIP = self::detectIPChange($db, $sid);
 
             // z_CS: check for concurrent sessions
-            $zCS = self::detectConcurrentSessions($db, $accountId, $examId, $sid);
+            $zCS = self::detectConcurrentSessions($db, $accountId, $intId, $quizId, $sid);
+
+            // Same IP count for this IP
+            $sameCount = isset($ipCounts[$ip]) ? max(0, $ipCounts[$ip] - 1) : 0;
+            $sameIpRisk = $sameCount >= 2 ? 100 : ($sameCount >= 1 ? 80 : 0);
 
             // N_i = (z_IP + z_CS) / 2
             $score = ($zIP + $zCS) / 2.0;
-            $scorePct = (int)round($score * 100);
+            $baseScorePct = (int)round($score * 100);
+            $finalNetScore = max($baseScorePct, $sameIpRisk);
 
             $scores[$sid] = [
                 'session_id'       => $sid,
@@ -227,10 +241,10 @@ final class NetworkAnalyzer
                 'ip_changed'       => $zIP === 1,
                 'ip_changed_count' => $zIP,
                 'concurrent_sessions' => $zCS === 1,
-                'risk_score'       => $scorePct,
-                'network_score_N'  => $scorePct,
+                'risk_score'       => $sameIpRisk,
+                'network_score_N'  => $finalNetScore,
                 'primary_ip'       => $ip,
-                'same_ip_count'    => isset($ipCounts[$ip]) ? max(0, $ipCounts[$ip] - 1) : 0,
+                'same_ip_count'    => $sameCount,
             ];
         }
 

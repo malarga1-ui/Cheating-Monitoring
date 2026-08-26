@@ -28,14 +28,21 @@ final class SimilarityEngine
     {
         $db = Database::connection();
 
-        $allAnswers = self::loadExamAnswers($db, $accountId, $examId);
+        $exam = Database::fetchOne(
+            'SELECT id, moodle_quiz_id, account_id FROM exams WHERE id = ? OR moodle_quiz_id = ? ORDER BY (account_id = ?) DESC LIMIT 1',
+            [$examId, $examId, $accountId]
+        );
+        $intId = $exam ? (int)$exam['id'] : $examId;
+        $quizId = $exam ? (int)$exam['moodle_quiz_id'] : $examId;
+
+        $allAnswers = self::loadExamAnswers($db, $accountId, $intId, $quizId);
         if (empty($allAnswers)) {
             return ['pairs' => [], 'sessions' => []];
         }
 
         $byStudent = self::groupByStudent($allAnswers);
         $pairs = self::compareAllPairs($byStudent);
-        self::persistPairs($db, $accountId, $examId, $pairs);
+        self::persistPairs($db, $accountId, $intId, $quizId, $pairs);
 
         $sessions = self::buildSessionSummary($pairs);
         self::persistSessionScores($db, $sessions);
@@ -50,7 +57,14 @@ final class SimilarityEngine
     {
         $db = Database::connection();
 
-        $allAnswers = self::loadExamAnswers($db, $accountId, $examId);
+        $exam = Database::fetchOne(
+            'SELECT id, moodle_quiz_id, account_id FROM exams WHERE id = ? OR moodle_quiz_id = ? ORDER BY (account_id = ?) DESC LIMIT 1',
+            [$examId, $examId, $accountId]
+        );
+        $intId = $exam ? (int)$exam['id'] : $examId;
+        $quizId = $exam ? (int)$exam['moodle_quiz_id'] : $examId;
+
+        $allAnswers = self::loadExamAnswers($db, $accountId, $intId, $quizId);
         if (empty($allAnswers)) {
             return ['max_similarity' => 0, 'match_count' => 0, 'worst_pair' => null];
         }
@@ -86,15 +100,15 @@ final class SimilarityEngine
 
     /* ── Loaders ──────────────────────────────────────────────── */
 
-    private static function loadExamAnswers(PDO $db, int $accountId, int $examId): array
+    private static function loadExamAnswers(PDO $db, int $accountId, int $intId, int $quizId): array
     {
         $st = $db->prepare(
             "SELECT session_id, student_id, question_id, answer_text, answer_length, word_count
              FROM answer_records
-             WHERE account_id = :a AND exam_id = :e
+             WHERE (account_id = :a OR account_id = 0) AND (exam_id = :eid OR exam_id = :qid)
              ORDER BY student_id, question_id"
         );
-        $st->execute([':a' => $accountId, ':e' => $examId]);
+        $st->execute([':a' => $accountId, ':eid' => $intId, ':qid' => $quizId]);
         return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
@@ -202,7 +216,7 @@ final class SimilarityEngine
      *   3. Build frequency vectors
      *   4. Compute cosine similarity
      */
-    private static function trigramCosine(string $textA, string $textB): float
+    public static function trigramCosine(string $textA, string $textB): float
     {
         $textA = mb_strtolower(trim($textA));
         $textB = mb_strtolower(trim($textB));
@@ -313,10 +327,10 @@ final class SimilarityEngine
 
     /* ── Persistence ──────────────────────────────────────────── */
 
-    private static function persistPairs(PDO $db, int $accountId, int $examId, array $pairs): void
+    private static function persistPairs(PDO $db, int $accountId, int $intId, int $quizId, array $pairs): void
     {
-        $db->prepare("DELETE FROM similarity_pairs WHERE account_id = :a AND exam_id = :e")
-           ->execute([':a' => $accountId, ':e' => $examId]);
+        $db->prepare("DELETE FROM similarity_pairs WHERE (account_id = :a OR account_id = 0) AND (exam_id = :eid OR exam_id = :qid)")
+           ->execute([':a' => $accountId, ':eid' => $intId, ':qid' => $quizId]);
 
         $st = $db->prepare(
             "INSERT INTO similarity_pairs
@@ -328,7 +342,7 @@ final class SimilarityEngine
             if ($p['similarity'] < 10) continue;
             $st->execute([
                 ':a'     => $accountId,
-                ':e'     => $examId,
+                ':e'     => $intId,
                 ':sa'    => $p['student_a'],
                 ':sb'    => $p['student_b'],
                 ':sim'   => $p['similarity'],

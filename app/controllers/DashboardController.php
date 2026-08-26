@@ -194,13 +194,18 @@ final class DashboardController
                 "SELECT ss.id, ss.student_id,
                         COALESCE(st.fullname, CONCAT('طالب #', ss.student_id)) AS student_name,
                         COALESCE(st.username, '') AS student_username,
-                        ss.exam_id, ss.exam_name, ss.course_id, ss.course_name,
+                        ss.exam_id,
+                        COALESCE(e.name, CONCAT('امتحان #', ss.exam_id)) AS exam_name,
+                        COALESCE(e.moodle_course_id, c.id, 0) AS course_id,
+                        COALESCE(c.name, CONCAT('مساق #', COALESCE(e.moodle_course_id, 0))) AS course_name,
                         ss.session_id, ss.risk_score, ss.risk_level, ss.event_count,
                         ss.tab_hidden_count, ss.paste_count, ss.copy_count,
                         ss.ai_suspect_score, ss.same_ip_student_count, ss.similarity_max_score,
                         ss.first_event_at, ss.last_event_at
                  FROM session_summaries ss
                  LEFT JOIN students st ON (st.id = ss.student_id OR st.moodle_user_id = ss.student_id)
+                 LEFT JOIN exams e ON (e.id = ss.exam_id OR e.moodle_quiz_id = ss.exam_id)
+                 LEFT JOIN courses c ON (c.moodle_course_id = e.moodle_course_id AND (c.account_id = e.account_id OR c.account_id = 0))
                  WHERE ss.risk_level IN ('high','critical') $where
                  ORDER BY ss.risk_score DESC, ss.last_event_at DESC
                  LIMIT 10"

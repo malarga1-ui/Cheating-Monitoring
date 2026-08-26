@@ -789,24 +789,12 @@ final class Aggregator
                     error_log("CognitiveAnalyzer error: " . $e->getMessage());
                 }
 
-                // v28: Per-question similarity check via Python TF-IDF engine
+                // Re-score all sessions with full AI/similarity/network data in real-time
                 try {
-                    self::runSimilarityCheck($accountId, $examId);
+                    self::rescoreSessions($accountId, $examId);
                 } catch (\Throwable $e) {
-                    error_log("SimilarityCheck error: " . $e->getMessage());
+                    error_log("rescoreSessions error: " . $e->getMessage());
                 }
-
-                // v28: Event sequence detection per session
-                foreach ($sessions as $sessionId) {
-                    try {
-                        self::runSequenceDetection($accountId, $sessionId);
-                    } catch (\Throwable $e) {
-                        error_log("SequenceDetection error: " . $e->getMessage());
-                    }
-                }
-
-                // Re-score all sessions with full AI/similarity/network data
-                self::rescoreSessions($accountId, $examId);
             }
         }
     }
@@ -819,10 +807,16 @@ final class Aggregator
     {
         $pdo = Database::connection();
 
+        $exam = Database::fetchOne('SELECT id, moodle_quiz_id, question_count, duration_minutes FROM exams WHERE id = ? OR moodle_quiz_id = ? LIMIT 1', [$examId, $examId]);
+        $intId = $exam ? (int)$exam['id'] : $examId;
+        $quizId = $exam ? (int)$exam['moodle_quiz_id'] : $examId;
+        $qCount = $exam ? (int)($exam['question_count'] ?? 0) : 0;
+        $durMin = $exam ? (int)($exam['duration_minutes'] ?? 15) : 15;
+
         $rows = $pdo->prepare(
-            "SELECT * FROM session_summaries WHERE account_id = :a AND exam_id = :e"
+            "SELECT * FROM session_summaries WHERE (account_id = :a OR account_id = 0) AND (exam_id = :eid OR exam_id = :qid)"
         );
-        $rows->execute([':a' => $accountId, ':e' => $examId]);
+        $rows->execute([':a' => $accountId, ':eid' => $intId, ':qid' => $quizId]);
         $summaries = $rows->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
         if (empty($summaries)) return;
@@ -837,26 +831,21 @@ final class Aggregator
         foreach ($summaries as $s) {
             // Rebuild counters from the session_summaries row
             $counters = $s;
-            // Ensure exam context keys exist
-            if (!isset($counters['question_count'])) {
-                $counters['question_count'] = (int)($s['question_count'] ?? 0);
-            }
-            if (!isset($counters['exam_minutes'])) {
-                $counters['exam_minutes'] = (int)($s['duration_minutes'] ?? 15);
-            }
+            $counters['question_count'] = $qCount > 0 ? $qCount : (int)($s['question_count'] ?? 0);
+            $counters['exam_minutes']   = $durMin > 0 ? $durMin : (int)($s['duration_minutes'] ?? 15);
 
             $risk = RiskEngine::score($counters);
 
             $update->execute([
-                ':risk' => $risk['score'],
+                ':risk'  => $risk['score'],
                 ':level' => $risk['level'],
-                ':id' => $s['id'],
+                ':id'    => $s['id'],
             ]);
 
             $updateSession->execute([
-                ':risk' => $risk['score'],
+                ':risk'  => $risk['score'],
                 ':level' => $risk['level'],
-                ':sid' => $s['session_id'],
+                ':sid'   => $s['session_id'],
             ]);
         }
     }
@@ -1003,8 +992,8 @@ final class Aggregator
                 if ($answerText === '' && $questionId === '') continue;
 
                 $answerLen = mb_strlen($answerText);
-                if ($wordCount === 0 && $answerText !== '') {
-                    $wordCount = count(explode(' ', trim($answerText)));
+                if ($answerText !== '') {
+                    $wordCount = AIDetector::countWords($answerText);
                 }
 
                 if ($typeDuration === 0) {
@@ -1035,6 +1024,13 @@ final class Aggregator
                     ':ctxt'   => $copyText,
                     ':created' => $ev['event_time'],
                 ]);
+
+                // Instantly trigger AI analysis if answer has >= 10 words
+                if ($wordCount >= 10) {
+                    try {
+                        AIDetector::analyzeAndPersist($accountId, $sessionId, (string)$questionId, $answerText);
+                    } catch (\Throwable $e) {}
+                }
             }
 
             self::saveCopyContext($pdo, $sessionId, $accountId, $examId, $studentId);

@@ -33,7 +33,7 @@ final class FailoverAIDetector
     {
         $cleanText = trim($text);
 
-        if (str_word_count($cleanText) < 10) {
+        if (AIDetector::countWords($cleanText) < 10) {
             return [
                 'status'   => 'SKIPPED',
                 'ai_score' => 0.0,

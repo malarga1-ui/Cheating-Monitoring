@@ -204,11 +204,11 @@ function ExamTable({ exams, onRowClick }) {
 }
 
 /* ─── Shared: Student Table ──────────────────────────────── */
-function StudentTable({ students, compact = false }) {
+function StudentTable({ students, compact = false, onAction = null }) {
   const navigate = useNavigate()
   if (!Array.isArray(students) || students.length === 0) return <Empty />
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white">
+    <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -231,6 +231,7 @@ function StudentTable({ students, compact = false }) {
               {!compact && <th className="px-3 py-3 text-center">📋 نسخ</th>}
               {!compact && <th className="px-3 py-3 text-center">📥 لصق</th>}
               {!compact && <th className="px-3 py-3 text-center">👁️ إخفاء</th>}
+              {onAction && <th className="px-4 py-3 text-center">إجراءات المدرس</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
@@ -247,17 +248,56 @@ function StudentTable({ students, compact = false }) {
                   <span className={`text-xs font-extrabold tabular-nums ${(s.risk_score || 0) >= 60 ? 'text-rose-600' : (s.risk_score || 0) >= 30 ? 'text-amber-600' : 'text-emerald-600'}`}>{s.risk_score || 0}</span>
                 </td>
                 <td className="px-3 py-3 text-center">
-                  {s.same_ip_student_count > 0 ? <span className="inline-flex rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700">{s.same_ip_student_count} طالب</span> : <span className="text-[10px] font-bold text-slate-300">—</span>}
+                  {(s.same_ip_student_count > 0 || (s.same_ip > 0)) ? (
+                    <span className="inline-flex rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700">
+                      {(s.same_ip_student_count || s.same_ip)} طالب
+                    </span>
+                  ) : <span className="text-[10px] font-bold text-slate-300">—</span>}
                 </td>
                 <td className="px-3 py-3 text-center">
-                  {(s.ai_suspect_score || 0) >= 50 ? <span className="inline-flex rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] font-bold text-cyan-700">{s.ai_suspect_score}%</span> : <span className="text-[10px] font-bold text-slate-400">{s.ai_suspect_score || 0}%</span>}
+                  {(s.ai_suspect_score || s.ai_score || 0) >= 50 ? (
+                    <span className="inline-flex rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] font-bold text-cyan-700">
+                      {s.ai_suspect_score || s.ai_score}%
+                    </span>
+                  ) : <span className="text-[10px] font-bold text-slate-400">{s.ai_suspect_score || s.ai_score || 0}%</span>}
                 </td>
                 <td className="px-3 py-3 text-center">
-                  {(s.similarity_max_score || 0) >= 50 ? <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">{s.similarity_max_score}%</span> : <span className="text-[10px] font-bold text-slate-400">{s.similarity_max_score || 0}%</span>}
+                  {(s.similarity_max_score || s.sim_score || 0) >= 50 ? (
+                    <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                      {s.similarity_max_score || s.sim_score}%
+                    </span>
+                  ) : <span className="text-[10px] font-bold text-slate-400">{s.similarity_max_score || s.sim_score || 0}%</span>}
                 </td>
                 {!compact && <td className="px-3 py-3 text-center"><span className={`text-xs font-bold ${(s.copy_count || 0) > 0 ? 'text-blue-600' : 'text-slate-300'}`}>{s.copy_count || 0}</span></td>}
                 {!compact && <td className="px-3 py-3 text-center"><span className={`text-xs font-bold ${(s.paste_count || 0) > 0 ? 'text-amber-600' : 'text-slate-300'}`}>{s.paste_count || 0}</span></td>}
                 {!compact && <td className="px-3 py-3 text-center"><span className={`text-xs font-bold ${(s.tab_hidden_count || 0) > 0 ? 'text-rose-600' : 'text-slate-300'}`}>{s.tab_hidden_count || 0}</span></td>}
+                {onAction && (
+                  <td className="px-3 py-3 text-center" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-center gap-1.5">
+                      <button
+                        title="إرسال رسالة تحذيرية تظهر للطالب في الامتحان"
+                        onClick={() => onAction('message', s)}
+                        className="rounded-lg bg-amber-50 p-1.5 text-xs font-bold text-amber-700 ring-1 ring-amber-200 transition hover:bg-amber-100"
+                      >
+                        💬 رسالة
+                      </button>
+                      <button
+                        title="تقليص وقت الامتحان للطالب"
+                        onClick={() => onAction('reduce-time', s)}
+                        className="rounded-lg bg-violet-50 p-1.5 text-xs font-bold text-violet-700 ring-1 ring-violet-200 transition hover:bg-violet-100"
+                      >
+                        ⏱️ تقليص
+                      </button>
+                      <button
+                        title="قفل الامتحان عن الطالب فوراً"
+                        onClick={() => onAction('lock', s)}
+                        className="rounded-lg bg-rose-50 p-1.5 text-xs font-bold text-rose-700 ring-1 ring-rose-200 transition hover:bg-rose-100"
+                      >
+                        🔒 قفل
+                      </button>
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -578,11 +618,16 @@ function ExamDetail() {
   const [confirmModal, setConfirmModal] = useState({ open: false, title: '', message: '' })
 
   useEffect(() => {
-    api.get(`/api/teacher/exams/${id}`).then(setData).catch(() => {})
-    api.get(`/api/teacher/exams/${id}/students`).then(r => {
-      const list = Array.isArray(r?.students) ? r.students : Array.isArray(r) ? r : []
-      setStudents(list)
-    }).catch(() => setStudents([]))
+    function load() {
+      api.get(`/api/teacher/exams/${id}`).then(setData).catch(() => {})
+      api.get(`/api/teacher/exams/${id}/students`).then(r => {
+        const list = Array.isArray(r?.students) ? r.students : Array.isArray(r) ? r : []
+        setStudents(list)
+      }).catch(() => setStudents([]))
+    }
+    load()
+    const timer = setInterval(load, 5000)
+    return () => clearInterval(timer)
   }, [id])
 
   async function handleAction(type, params) {
@@ -636,7 +681,7 @@ function ExamDetail() {
             <option value="name">الاسم</option>
           </select>
         </div>
-        {students === null ? <Spinner /> : <StudentTable students={sorted} />}
+        {students === null ? <Spinner /> : <StudentTable students={sorted} onAction={(type, student) => setActionModal({ open: true, type, student })} />}
       </section>
 
       <ActionModal open={actionModal.open} type={actionModal.type} studentName={actionModal.student?.fullname || ''} onConfirm={p => handleAction(actionModal.type, p)} onCancel={() => setActionModal({ open: false, type: '', student: null })} />

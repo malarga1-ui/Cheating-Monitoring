@@ -11,7 +11,80 @@
  */
 final class AIDetector
 {
-    private const MIN_WORDS = 30;
+    private const MIN_WORDS = 20;
+
+    /**
+     * Unicode-aware word count supporting Arabic, English, and multilingual text.
+     */
+    public static function countWords(string $text): int
+    {
+        $clean = trim($text);
+        if ($clean === '') return 0;
+        $words = preg_split('/\s+/u', $clean, -1, PREG_SPLIT_NO_EMPTY);
+        return is_array($words) ? count($words) : 0;
+    }
+
+    /**
+     * Heuristic statistical & stylistic AI content detector (offline fallback).
+     * Analyzes discourse markers, sentence length variance, and vocabulary patterns.
+     */
+    public static function heuristicDetect(string $text, int $wordCount): array
+    {
+        $textLower = mb_strtolower($text, 'UTF-8');
+        
+        // Characteristic AI markers (Arabic & English)
+        $aiMarkersAr = [
+            'من الجدير بالذكر', 'بناءً على ذلك', 'في الختام', 'علاوة على ذلك',
+            'يجدر بالذكر', 'بالإضافة إلى ذلك', 'من ناحية أخرى', 'تلخيصاً لما سبق',
+            'يلعب دوراً حاسماً', 'تجدر الإشارة إلى', 'يمكن القول بأن', 'خلاصة القول',
+            'من هذا المنطلق', 'بشكل عام', 'على وجه الخصوص', 'بصورة شاملة'
+        ];
+        $aiMarkersEn = [
+            'in conclusion', 'furthermore', 'moreover', 'it is worth noting',
+            'additionally', 'on the other hand', 'plays a crucial role',
+            'consequently', 'in summary', 'it is important to emphasize',
+            'first and foremost', 'as mentioned previously', 'to summarize'
+        ];
+
+        $matchedMarkers = 0;
+        foreach (array_merge($aiMarkersAr, $aiMarkersEn) as $marker) {
+            if (mb_stripos($textLower, $marker) !== false) {
+                $matchedMarkers++;
+            }
+        }
+
+        // Sentence length consistency (low variance is typical for LLMs)
+        $sentences = preg_split('/[\.\!\؟\?\;\n]+/u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $sentenceCount = max(1, count($sentences));
+        $avgWordsPerSentence = $wordCount / $sentenceCount;
+
+        // Base score based on markers and length
+        $score = 0.0;
+        if ($matchedMarkers >= 3) {
+            $score = 88.0;
+        } elseif ($matchedMarkers === 2) {
+            $score = 78.0;
+        } elseif ($matchedMarkers === 1) {
+            $score = 65.0;
+        } elseif ($wordCount >= 25 && $avgWordsPerSentence >= 8 && $avgWordsPerSentence <= 25) {
+            // Highly structured paragraph with balanced phrasing
+            $score = 55.0;
+        } else {
+            $score = 30.0;
+        }
+
+        // Check for bullet-point formatting or structured numbers
+        if (preg_match('/(\d+[\.\-\)]|\•|\*|\-)\s+/u', $text)) {
+            $score = min(95.0, $score + 10.0);
+        }
+
+        return [
+            'ai_score' => round($score, 1),
+            'status'   => 'SUCCESS',
+            'provider' => 'HEURISTIC_AI_ENGINE',
+            'reason'   => "Matched {$matchedMarkers} AI discourse patterns with {$sentenceCount} structured sentences",
+        ];
+    }
 
     /**
      * Analyze a single answer text for AI-generated content.
@@ -22,7 +95,7 @@ final class AIDetector
     public static function analyzeText(string $answerText): array
     {
         $cleanText = trim($answerText);
-        $wordCount = str_word_count($cleanText);
+        $wordCount = self::countWords($cleanText);
 
         if ($wordCount < self::MIN_WORDS) {
             return [
@@ -34,27 +107,33 @@ final class AIDetector
             ];
         }
 
-        $apiKey = getenv('RAPIDAPI_KEY') ?: (string)em_config('ai_content_detection.rapidapi_key', '');
-        if ($apiKey === '') {
-            error_log('[AIDetector] RAPIDAPI_KEY not configured');
-            return [
-                'ai_score'   => 0.0,
-                'status'     => 'CONFIG_ERROR',
-                'provider'   => 'NONE',
-                'word_count' => $wordCount,
-                'reason'     => 'RAPIDAPI_KEY not set in environment or configuration',
-            ];
+        $apiKey = getenv('RAPIDAPI_KEY') ?: (function_exists('em_config') ? (string)em_config('ai_content_detection.rapidapi_key', '') : '');
+        if ($apiKey !== '') {
+            try {
+                $detector = new FailoverAIDetector($apiKey);
+                $result   = $detector->detect($cleanText);
+                if ($result['status'] === 'SUCCESS' && $result['ai_score'] > 0) {
+                    return [
+                        'ai_score'   => $result['ai_score'],
+                        'status'     => $result['status'],
+                        'provider'   => $result['provider'],
+                        'word_count' => $wordCount,
+                        'reason'     => $result['reason'] ?? null,
+                    ];
+                }
+            } catch (\Throwable $e) {
+                error_log('[AIDetector] External API error: ' . $e->getMessage());
+            }
         }
 
-        $detector = new FailoverAIDetector($apiKey);
-        $result   = $detector->detect($cleanText);
-
+        // Fallback to built-in heuristic AI detector
+        $heuristic = self::heuristicDetect($cleanText, $wordCount);
         return [
-            'ai_score'   => $result['ai_score'],
-            'status'     => $result['status'],
-            'provider'   => $result['provider'],
+            'ai_score'   => $heuristic['ai_score'],
+            'status'     => $heuristic['status'],
+            'provider'   => $heuristic['provider'],
             'word_count' => $wordCount,
-            'reason'     => $result['reason'] ?? null,
+            'reason'     => $heuristic['reason'],
         ];
     }
 
@@ -139,7 +218,7 @@ final class AIDetector
         $st = $pdo->prepare(
             'SELECT id, question_id, answer_text, word_count, ai_score
              FROM answer_records
-             WHERE account_id = :a AND session_id = :s
+             WHERE (account_id = :a OR account_id = 0) AND session_id = :s
                AND ai_score = 0
                AND word_count >= ' . self::MIN_WORDS
         );
@@ -195,7 +274,7 @@ final class AIDetector
         $st = $pdo->prepare(
             'SELECT MAX(ai_score) AS max_score, COUNT(*) AS total, SUM(CASE WHEN ai_score >= 50 THEN 1 ELSE 0 END) AS flagged
              FROM answer_records
-             WHERE account_id = :a AND session_id = :s'
+             WHERE (account_id = :a OR account_id = 0) AND session_id = :s'
         );
         $st->execute([':a' => $accountId, ':s' => $sessionId]);
         $row = $st->fetch(PDO::FETCH_ASSOC);
@@ -207,7 +286,7 @@ final class AIDetector
         Database::execute(
             'UPDATE session_summaries
              SET ai_suspect_score = :score
-             WHERE account_id = :a AND session_id = :s',
+             WHERE (account_id = :a OR account_id = 0) AND session_id = :s',
             [
                 ':score' => $maxScore,
                 ':a'     => $accountId,

@@ -610,12 +610,12 @@ final class TeacherPortalController
             if ($sids !== []) {
                 $placeholders = implode(',', array_fill(0, count($sids), '?'));
                 $students = Database::fetchAll(
-                    "SELECT id, fullname, username FROM students WHERE id IN ($placeholders) AND (account_id = ? OR account_id = 0)",
-                    array_merge($sids, [$accountId])
+                    "SELECT id, moodle_user_id, fullname, username FROM students WHERE (id IN ($placeholders) OR moodle_user_id IN ($placeholders)) AND (account_id = ? OR account_id = 0)",
+                    array_merge($sids, $sids, [$accountId])
                 );
                 foreach ($students as $s) {
                     $names[] = [
-                        'id'       => (int)$s['id'],
+                        'id'       => (int)($s['moodle_user_id'] ?: $s['id']),
                         'fullname' => $s['fullname'],
                         'username' => $s['username'],
                     ];
@@ -667,14 +667,18 @@ final class TeacherPortalController
         if ($allIds !== []) {
             $placeholders = implode(',', array_fill(0, count($allIds), '?'));
             $students = Database::fetchAll(
-                "SELECT id, fullname, username FROM students WHERE id IN ($placeholders) AND account_id = ?",
-                array_merge($allIds, [$accountId])
+                "SELECT id, moodle_user_id, fullname, username FROM students WHERE (id IN ($placeholders) OR moodle_user_id IN ($placeholders)) AND (account_id = ? OR account_id = 0)",
+                array_merge($allIds, $allIds, [$accountId])
             );
             foreach ($students as $s) {
-                $nameMap[(int)$s['id']] = [
+                $info = [
                     'fullname' => $s['fullname'],
                     'username' => $s['username'],
                 ];
+                $nameMap[(int)$s['id']] = $info;
+                if (!empty($s['moodle_user_id'])) {
+                    $nameMap[(int)$s['moodle_user_id']] = $info;
+                }
             }
         }
 
