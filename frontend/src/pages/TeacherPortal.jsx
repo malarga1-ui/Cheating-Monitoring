@@ -326,7 +326,12 @@ function ExamsList({ courseId: propCourseId }) {
 
   useEffect(() => {
     const url = '/api/teacher/exams' + (courseId ? `?course_id=${courseId}` : '')
-    api.get(url).then(d => setExams(Array.isArray(d) ? d : [])).catch(() => setExams([]))
+    function load() {
+      api.get(url).then(d => setExams(Array.isArray(d) ? d : [])).catch(() => setExams([]))
+    }
+    load()
+    const timer = setInterval(load, 3000)
+    return () => clearInterval(timer)
   }, [courseId])
 
   const filtered = Array.isArray(exams) ? exams.filter(e => {
@@ -420,7 +425,12 @@ function CoursesList({ courses: propCourses }) {
 
   useEffect(() => {
     if (!propCourses) {
-      api.get('/api/teacher/courses').then(d => setFetchedCourses(Array.isArray(d) ? d : [])).catch(() => setFetchedCourses([]))
+      function load() {
+        api.get('/api/teacher/courses').then(d => setFetchedCourses(Array.isArray(d) ? d : [])).catch(() => setFetchedCourses([]))
+      }
+      load()
+      const timer = setInterval(load, 3000)
+      return () => clearInterval(timer)
     }
   }, [propCourses])
 
@@ -1105,7 +1115,12 @@ export default function TeacherPortal() {
 
   useEffect(() => {
     if (user && user.authType === 'teacher') {
-      api.get('/api/teacher/courses').then(d => setCourses(Array.isArray(d) ? d : [])).catch(() => setCourses([]))
+      function load() {
+        api.get('/api/teacher/courses').then(d => setCourses(Array.isArray(d) ? d : [])).catch(() => setCourses([]))
+      }
+      load()
+      const timer = setInterval(load, 3000)
+      return () => clearInterval(timer)
     }
   }, [user])
 

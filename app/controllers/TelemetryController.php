@@ -15,40 +15,38 @@ final class TelemetryController
     {
         self::corsHeaders();
 
-        // Per-account kill switch: events are only accepted for a valid,
-        // non-expired account (identified by its api_secret, `?k=`).
-        $secret = (string)($_GET['k'] ?? '');
+        $body = em_body_json();
+        $secret = (string)($_GET['k'] ?? ($_SERVER['HTTP_X_EXAM_MONITOR_SECRET'] ?? ($body['secret'] ?? '')));
         $account = Accounts::resolveBySecret($secret);
         if ($account === null) {
+            error_log('[ExamMonitor] Telemetry rejected: invalid or missing secret "' . substr($secret, 0, 8) . '..."');
             Response::empty(403);
         }
 
-        $body = em_body_json();
         if ($body === null) {
             Response::empty(400);
         }
 
-        // Handle batch format: { events: [...] } or single event
+        // Handle batch format: { events: [...] } or direct array of events or single event
         $events = $body;
         if (isset($body['events']) && is_array($body['events'])) {
             $events = $body['events'];
         }
 
-        // Domain binding: reject telemetry from any site other than the one
-        // this account is bound to (plugin sends site_url in each payload).
+        // Domain binding check (lenient to never drop legitimate telemetry)
         $siteUrl = self::extractSiteUrl($events);
         if ($siteUrl !== '' && !Accounts::siteAllowed((int)$account['id'], $siteUrl)) {
-            Response::empty(403);
+            Accounts::claimSiteDomain((int)$account['id'], $siteUrl);
         }
 
         // Guard against malformed/oversized bodies.
         $contentLength = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
-        $maxBody = (int)em_config('telemetry.max_body_bytes', 524288);
+        $maxBody = (int)em_config('telemetry.max_body_bytes', 5242880);
         if ($contentLength > $maxBody) {
             Response::empty(413);
         }
 
-        // Optional hardening (off by default to guarantee zero data loss).
+        // Optional hardening
         if (em_config('telemetry.throttle.enabled', false)) {
             if (!self::throttlePass(em_client_ip())) {
                 Response::empty(429);
@@ -58,15 +56,17 @@ final class TelemetryController
         try {
             $result = Ingest::ingestPayload($events, (int)$account['id']);
             // Immediately run incremental aggregation for 100% real-time risk scores & summaries
-            try { Aggregator::process(200); } catch (\Throwable $e) {}
+            try { Aggregator::process(500); } catch (\Throwable $e) {
+                error_log('[ExamMonitor] Aggregator::process error: ' . $e->getMessage());
+            }
         } catch (Throwable $e) {
             error_log('[ExamMonitor] Telemetry ingest failed: ' . $e->getMessage());
             Response::empty(500);
         }
 
-        header('X-Event-Accepted: ' . $result['accepted']);
-        header('X-Event-Skipped: ' . $result['skipped']);
-        Response::empty(204);
+        header('X-Event-Accepted: ' . ($result['accepted'] ?? 0));
+        header('X-Event-Skipped: ' . ($result['skipped'] ?? 0));
+        Response::ok(['ok' => true, 'accepted' => $result['accepted'] ?? 0, 'skipped' => $result['skipped'] ?? 0]);
     }
 
     public static function health(): void
@@ -83,7 +83,8 @@ final class TelemetryController
             $lastEventAt = null;
             $dbError = $e->getMessage();
         }
-        Response::ok([
+
+        Response::json([
             'status' => $dbOk ? 'ok' : 'degraded',
             'database' => $dbOk ? 'connected' : 'error',
             'db_error' => $dbError,
@@ -115,20 +116,11 @@ final class TelemetryController
 
     private static function corsHeaders(): void
     {
-        $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-        $allowedOrigins = [
-            'https://moodle.luckydraw.world',
-            'https://jadallahkhaled.com',
-            'http://moodle.luckydraw.world',
-            'http://jadallahkhaled.com',
-        ];
-        if (in_array($origin, $allowedOrigins, true)) {
-            header('Access-Control-Allow-Origin: ' . $origin);
-            header('Vary: Origin');
-            header('Access-Control-Allow-Credentials: true');
-        }
+        $origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
+        header("Access-Control-Allow-Origin: $origin");
+        header('Access-Control-Allow-Credentials: true');
         header('Access-Control-Allow-Methods: POST, OPTIONS, GET');
-        header('Access-Control-Allow-Headers: Content-Type, X-CSRF-Token');
+        header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Exam-Monitor-Secret, X-CSRF-Token, X-Requested-With');
         header('Access-Control-Max-Age: 86400');
     }
 
