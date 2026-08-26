@@ -300,6 +300,27 @@ final class TeacherActionController
                 $params
             );
 
+            // Mark actions as delivered and build result array
+            $result = [];
+            foreach ($actions as $a) {
+                try {
+                    Database::execute(
+                        'UPDATE teacher_actions SET status = "delivered", delivered_at = NOW() WHERE id = ? AND status = "pending"',
+                        [(int)$a['id']]
+                    );
+                    Database::execute(
+                        'INSERT INTO teacher_action_log (action_id, event_type, created_at) VALUES (?, "delivered", NOW())',
+                        [(int)$a['id']]
+                    );
+                } catch (\Throwable $e) {}
+                $result[] = [
+                    'id' => (int)$a['id'],
+                    'action' => $a['action_type'],
+                    'message' => $a['message'],
+                    'minutes' => $a['minutes_to_reduce'] !== null ? (int)$a['minutes_to_reduce'] : null,
+                ];
+            }
+
             // Check if this student/session is permanently locked
             $isLocked = false;
             $lockQuery = 'SELECT 1 FROM teacher_actions WHERE account_id = ? AND action_type = "lock_exam" AND status IN ("pending", "delivered", "acknowledged")';
