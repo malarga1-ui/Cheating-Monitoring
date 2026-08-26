@@ -17,6 +17,18 @@ $path    = rawurldecode((string)parse_url($uri, PHP_URL_PATH));
 $path    = rtrim($path, '/') ?: '/';
 $method  = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
 
+// Global CORS preflight handler for Moodle and cross-origin telemetry/action requests
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
+header("Access-Control-Allow-Origin: $origin");
+header('Access-Control-Allow-Credentials: true');
+if ($method === 'OPTIONS') {
+    header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Exam-Monitor-Secret, X-Requested-With, X-Event-Accepted, X-Event-Skipped');
+    header('Access-Control-Max-Age: 86400');
+    http_response_code(204);
+    exit;
+}
+
 // Let the PHP built-in server serve real static files itself.
 if (is_file(__DIR__ . $path)) {
     return false;

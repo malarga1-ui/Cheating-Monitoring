@@ -8,6 +8,9 @@ final class Response
     {
         if (PHP_SAPI !== 'cli') {
             http_response_code($status);
+            $origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
+            header("Access-Control-Allow-Origin: $origin");
+            header('Access-Control-Allow-Credentials: true');
             header('Content-Type: application/json; charset=utf-8');
             header('Cache-Control: no-store');
         }
@@ -30,6 +33,9 @@ final class Response
     {
         if (PHP_SAPI !== 'cli') {
             http_response_code($status);
+            $origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
+            header("Access-Control-Allow-Origin: $origin");
+            header('Access-Control-Allow-Credentials: true');
             header('Cache-Control: no-store');
         }
         exit;
