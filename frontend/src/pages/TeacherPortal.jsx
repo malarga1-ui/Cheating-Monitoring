@@ -656,6 +656,7 @@ function ExamDetail() {
   async function handleAction(type, params) {
     setActionModal({ open: false, type: '', student: null })
     try {
+      const endpoint = type === 'message' ? 'message' : type === 'lock' ? 'lock' : 'reduce-time'
       const sid = actionModal.student?.student_id || actionModal.student?.id || actionModal.student?.moodle_user_id || 0
       const ssid = actionModal.student?.session_summary_id || 0
       await api.post(`/api/teacher/actions/${endpoint}`, { exam_id: parseInt(id), session_summary_id: ssid, student_id: sid, ...params })
