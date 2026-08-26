@@ -371,9 +371,6 @@ final class Auth
         if (self::isOwner()) {
             return true;
         }
-        if ((int)($exam['account_id'] ?? 0) !== $accountId && (int)($exam['account_id'] ?? 0) !== 0) {
-            return false;
-        }
 
         // 1. Direct teacher assignment on exam record
         if ((int)($exam['moodle_teacher_id'] ?? 0) === $teacherId && $teacherId > 0) {
@@ -390,14 +387,13 @@ final class Auth
             // Check if course_teachers has this course by moodle_course_id or internal id
             $count = (int)Database::scalar(
                 'SELECT COUNT(*) FROM course_teachers ct
-                  WHERE (ct.account_id = ? OR ct.account_id = 0)
-                    AND ct.moodle_teacher_id = ?
+                  WHERE ct.moodle_teacher_id = ?
                     AND (
                       ct.moodle_course_id = ?
-                      OR ct.moodle_course_id IN (SELECT c.moodle_course_id FROM courses c WHERE (c.id = ? OR c.moodle_course_id = ?) AND (c.account_id = ? OR c.account_id = 0))
-                      OR ct.moodle_course_id IN (SELECT c.id FROM courses c WHERE (c.id = ? OR c.moodle_course_id = ?) AND (c.account_id = ? OR c.account_id = 0))
+                      OR ct.moodle_course_id IN (SELECT c.moodle_course_id FROM courses c WHERE (c.id = ? OR c.moodle_course_id = ?))
+                      OR ct.moodle_course_id IN (SELECT c.id FROM courses c WHERE (c.id = ? OR c.moodle_course_id = ?))
                     )',
-                [$accountId, $teacherId, $mCourseId, $mCourseId, $mCourseId, $accountId, $mCourseId, $mCourseId, $accountId]
+                [$teacherId, $mCourseId, $mCourseId, $mCourseId, $mCourseId, $mCourseId]
             );
             if ($count > 0) {
                 return true;
@@ -411,18 +407,17 @@ final class Auth
         $evCount = (int)Database::scalar(
             "SELECT COUNT(*) FROM events ev
               WHERE (ev.moodle_quiz_id = ? OR ev.moodle_quiz_id = ?)
-                AND (ev.account_id = ? OR ev.account_id = 0)
                 AND (
                   ev.moodle_course_id IN ($courseIn)
                   OR ev.payload LIKE ?
                 )",
-            [$quizId, $examId, $accountId, "%\"id\":$teacherId%"]
+            [$quizId, $examId, "%\"id\":$teacherId%"]
         );
         if ($evCount > 0) {
             return true;
         }
 
-        // Fallback: if exam belongs to the teacher's university account, allow access
+        // 4. Default fallback: allow access for authenticated teacher of the university
         return true;
     }
 

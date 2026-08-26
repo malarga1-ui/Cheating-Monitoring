@@ -47,8 +47,8 @@ final class TeacherActionController
     private static function requireExamOwnership(int $accountId, int $teacherId, int $examId): array
     {
         $exam = Database::fetchOne(
-            'SELECT * FROM exams WHERE (id = ? OR moodle_quiz_id = ?) AND (account_id = ? OR account_id = 0)',
-            [$examId, $examId, $accountId]
+            'SELECT * FROM exams WHERE id = ? OR moodle_quiz_id = ? ORDER BY id DESC LIMIT 1',
+            [$examId, $examId]
         );
         if ($exam === null) {
             Response::error('الامتحان غير موجود', 404);
