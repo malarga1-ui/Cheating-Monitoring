@@ -16,8 +16,8 @@ final class Teachers
             'SELECT t.*, a.org_name
                FROM teachers t
                LEFT JOIN accounts a ON a.id = t.account_id
-              WHERE (t.account_id = ? OR t.account_id = 0) AND t.moodle_teacher_id = ?',
-            [$accountId, $teacherId]
+              WHERE (t.account_id = ? OR t.account_id = 0) AND (t.moodle_teacher_id = ? OR t.id = ?)',
+            [$accountId, $teacherId, $teacherId]
         );
         if ($row !== null && empty($row['org_name'])) {
             $acc = Database::fetchOne('SELECT org_name FROM accounts WHERE id = ?', [$accountId]);
