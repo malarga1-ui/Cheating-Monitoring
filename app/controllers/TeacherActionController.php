@@ -270,34 +270,48 @@ final class TeacherActionController
             $studentId = (int)($body['student_id'] ?? ($_GET['student_id'] ?? 0));
             $examId = (int)($body['exam_id'] ?? ($_GET['exam_id'] ?? 0));
 
-            // Find pending actions for this session or student
-            $where = 'account_id = ? AND status = "pending"';
-            $params = [$accountId];
+            // Flexible query builder matching by session_id, student_id (internal or moodle), exam_id (internal or moodle)
+            $buildMatch = function(string $statusCondition) use ($accountId, $sessionId, $studentId, $examId): array {
+                $where = "account_id = ? AND $statusCondition";
+                $params = [$accountId];
+                $clauses = [];
 
-            if ($sessionId !== '') {
-                $where .= ' AND (session_summary_id = ? OR session_summary_id IN (SELECT id FROM session_summaries WHERE session_id = ?)';
-                $params[] = is_numeric($sessionId) ? (int)$sessionId : 0;
-                $params[] = $sessionId;
+                if ($sessionId !== '') {
+                    $clauses[] = '(session_summary_id = ? OR session_summary_id IN (SELECT id FROM session_summaries WHERE session_id = ?))';
+                    $params[] = is_numeric($sessionId) ? (int)$sessionId : 0;
+                    $params[] = $sessionId;
+                }
+
                 if ($studentId > 0 && $examId > 0) {
-                    $where .= ' OR (student_id = ? AND (exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?)))';
+                    $clauses[] = '((student_id = ? OR student_id IN (SELECT id FROM students WHERE moodle_user_id = ?) OR student_id IN (SELECT moodle_user_id FROM students WHERE id = ?)) AND (exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?) OR exam_id IN (SELECT moodle_quiz_id FROM exams WHERE id = ?)))';
+                    $params[] = $studentId;
+                    $params[] = $studentId;
                     $params[] = $studentId;
                     $params[] = $examId;
                     $params[] = $examId;
+                    $params[] = $examId;
+                } elseif ($studentId > 0) {
+                    $clauses[] = '(student_id = ? OR student_id IN (SELECT id FROM students WHERE moodle_user_id = ?) OR student_id IN (SELECT moodle_user_id FROM students WHERE id = ?))';
+                    $params[] = $studentId;
+                    $params[] = $studentId;
+                    $params[] = $studentId;
                 }
-                $where .= ')';
-            } elseif ($studentId > 0 && $examId > 0) {
-                $where .= ' AND student_id = ? AND (exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?))';
-                $params[] = $studentId;
-                $params[] = $examId;
-                $params[] = $examId;
-            }
 
+                if (!empty($clauses)) {
+                    $where .= ' AND (' . implode(' OR ', $clauses) . ')';
+                }
+
+                return [$where, $params];
+            };
+
+            // 1. Pending actions
+            [$pendingWhere, $pendingParams] = $buildMatch('status = "pending"');
             $actions = Database::fetchAll(
                 "SELECT id, action_type, message, minutes_to_reduce, created_at
                  FROM teacher_actions
-                 WHERE $where
+                 WHERE $pendingWhere
                  ORDER BY created_at ASC",
-                $params
+                $pendingParams
             );
 
             // Mark actions as delivered and build result array
@@ -321,51 +335,13 @@ final class TeacherActionController
                 ];
             }
 
-            // Check if this student/session is permanently locked
-            $isLocked = false;
-            $lockQuery = 'SELECT 1 FROM teacher_actions WHERE account_id = ? AND action_type = "lock_exam" AND status IN ("pending", "delivered", "acknowledged")';
-            $lockParams = [$accountId];
-            if ($sessionId !== '') {
-                $lockQuery .= ' AND (session_summary_id = ? OR session_summary_id IN (SELECT id FROM session_summaries WHERE session_id = ?)';
-                $lockParams[] = is_numeric($sessionId) ? (int)$sessionId : 0;
-                $lockParams[] = $sessionId;
-                if ($studentId > 0 && $examId > 0) {
-                    $lockQuery .= ' OR (student_id = ? AND (exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?)))';
-                    $lockParams[] = $studentId;
-                    $lockParams[] = $examId;
-                    $lockParams[] = $examId;
-                }
-                $lockQuery .= ')';
-            } elseif ($studentId > 0 && $examId > 0) {
-                $lockQuery .= ' AND student_id = ? AND (exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?))';
-                $lockParams[] = $studentId;
-                $lockParams[] = $examId;
-                $lockParams[] = $examId;
-            }
-            $lockQuery .= ' LIMIT 1';
-            $isLocked = (bool)Database::scalar($lockQuery, $lockParams);
+            // 2. Check if permanently locked
+            [$lockWhere, $lockParams] = $buildMatch('action_type = "lock_exam" AND status IN ("pending", "delivered", "acknowledged")');
+            $isLocked = (bool)Database::scalar("SELECT 1 FROM teacher_actions WHERE $lockWhere LIMIT 1", $lockParams);
 
-            // Calculate total reduced minutes for this session/student
-            $reduceQuery = 'SELECT COALESCE(SUM(minutes_to_reduce), 0) FROM teacher_actions WHERE account_id = ? AND action_type = "reduce_time" AND status IN ("pending", "delivered", "acknowledged")';
-            $reduceParams = [$accountId];
-            if ($sessionId !== '') {
-                $reduceQuery .= ' AND (session_summary_id = ? OR session_summary_id IN (SELECT id FROM session_summaries WHERE session_id = ?)';
-                $reduceParams[] = is_numeric($sessionId) ? (int)$sessionId : 0;
-                $reduceParams[] = $sessionId;
-                if ($studentId > 0 && $examId > 0) {
-                    $reduceQuery .= ' OR (student_id = ? AND (exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?)))';
-                    $reduceParams[] = $studentId;
-                    $reduceParams[] = $examId;
-                    $reduceParams[] = $examId;
-                }
-                $reduceQuery .= ')';
-            } elseif ($studentId > 0 && $examId > 0) {
-                $reduceQuery .= ' AND student_id = ? AND (exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?))';
-                $reduceParams[] = $studentId;
-                $reduceParams[] = $examId;
-                $reduceParams[] = $examId;
-            }
-            $totalReducedMinutes = (int)Database::scalar($reduceQuery, $reduceParams);
+            // 3. Cumulative reduced minutes
+            [$reduceWhere, $reduceParams] = $buildMatch('action_type = "reduce_time" AND status IN ("pending", "delivered", "acknowledged")');
+            $totalReducedMinutes = (int)Database::scalar("SELECT COALESCE(SUM(minutes_to_reduce), 0) FROM teacher_actions WHERE $reduceWhere", $reduceParams);
 
             Response::json([
                 'actions' => $result,
