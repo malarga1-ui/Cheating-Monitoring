@@ -53,13 +53,8 @@ final class TeacherActionController
         if ($exam === null) {
             Response::error('الامتحان غير موجود', 404);
         }
-        try {
-            $courseIds = Teachers::courseIds($accountId, $teacherId);
-            if (!empty($courseIds) && !in_array((int)$exam['moodle_course_id'], $courseIds, true)) {
-                Response::error('ليس لديك صلاحية على هذا الامتحان', 403);
-            }
-        } catch (\Throwable $e) {
-            // If course_teachers table doesn't exist or query fails, allow access
+        if (!Auth::teacherOwnsExam($accountId, $teacherId, $exam)) {
+            Response::error('ليس لديك صلاحية على هذا الامتحان', 403);
         }
         return $exam;
     }
