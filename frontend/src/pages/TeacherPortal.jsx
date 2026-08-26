@@ -133,8 +133,6 @@ function Header({ courses = [] }) {
             </span>
             بث مباشر لحظي
           </span>
-
-          <button onClick={toggle} className="hidden cursor-pointer items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-extrabold text-slate-600 hover:bg-slate-50 sm:inline-flex">{lang === 'ar' ? 'EN' : 'عربي'}</button>
           
           <button onClick={handleSync} disabled={syncing} className="hidden items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-extrabold text-slate-700 hover:bg-slate-200 disabled:opacity-50 sm:flex">
             <svg className={syncing ? "animate-spin" : ""} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21v-5h5"/></svg>
