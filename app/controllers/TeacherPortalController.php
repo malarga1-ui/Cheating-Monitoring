@@ -33,7 +33,7 @@ final class TeacherPortalController
         $row = Database::fetchOne(
             "SELECT
                 (SELECT COUNT(*) FROM exams e WHERE e.account_id = ? AND e.moodle_course_id IN ($in)) AS exams_count,
-                (SELECT COUNT(*) FROM exams e WHERE e.account_id = ? AND e.moodle_course_id IN ($in) AND e.status = 'active') AS active_exams,
+                (SELECT COUNT(*) FROM exams e WHERE e.account_id = ? AND e.moodle_course_id IN ($in) AND e.status = 'active' AND e.last_event_at >= (NOW() - INTERVAL 30 MINUTE)) AS active_exams,
                 (SELECT COUNT(*) FROM courses c WHERE c.account_id = ? AND c.moodle_course_id IN ($in)) AS courses_count,
                 (SELECT COUNT(DISTINCT s.id)
                    FROM students s
@@ -150,9 +150,10 @@ final class TeacherPortalController
             $params[] = "%$search%";
             $params[] = "%$search%";
         }
-        if ($status === 'active' || $status === 'ended') {
-            $extra .= ' AND e.status = ?';
-            $params[] = $status;
+        if ($status === 'active') {
+            $extra .= " AND e.status = 'active' AND e.last_event_at IS NOT NULL AND e.last_event_at >= (NOW() - INTERVAL 30 MINUTE)";
+        } elseif ($status === 'ended') {
+            $extra .= " AND (e.status = 'ended' OR e.last_event_at IS NULL OR e.last_event_at < (NOW() - INTERVAL 30 MINUTE))";
         }
 
         $rows = Database::fetchAll(
