@@ -1296,10 +1296,41 @@ final class TeacherPortalController
 
         $deviceType = 'desktop';
         $deviceLabel = 'حاسوب / لاب توب 💻';
+        $osName = 'Windows';
+
         if ($uaRow !== '') {
-            if (preg_match('/Mobile|Android|iPhone|iPad|iPod|Windows Phone|BlackBerry|Opera Mini|IEMobile/i', $uaRow)) {
+            if (preg_match('/iPhone/i', $uaRow)) {
                 $deviceType = 'mobile';
-                $deviceLabel = 'هاتف محمول 📱';
+                $osName = 'iPhone (iOS)';
+                $deviceLabel = '📱 هاتف (iPhone)';
+            } elseif (preg_match('/iPad/i', $uaRow)) {
+                $deviceType = 'mobile';
+                $osName = 'iPad (iPadOS)';
+                $deviceLabel = '📱 لوحي (iPad)';
+            } elseif (preg_match('/Android/i', $uaRow)) {
+                $deviceType = 'mobile';
+                $osName = 'Android';
+                $deviceLabel = '📱 هاتف (Android)';
+            } elseif (preg_match('/Windows Phone/i', $uaRow)) {
+                $deviceType = 'mobile';
+                $osName = 'Windows Phone';
+                $deviceLabel = '📱 هاتف (Windows Phone)';
+            } elseif (preg_match('/Mobile|iPod|BlackBerry|Opera Mini|IEMobile/i', $uaRow)) {
+                $deviceType = 'mobile';
+                $osName = 'Mobile';
+                $deviceLabel = '📱 هاتف محمول';
+            } elseif (preg_match('/Windows/i', $uaRow)) {
+                $deviceType = 'desktop';
+                $osName = 'Windows';
+                $deviceLabel = '💻 حاسوب (Windows)';
+            } elseif (preg_match('/Macintosh|Mac OS X/i', $uaRow)) {
+                $deviceType = 'desktop';
+                $osName = 'macOS';
+                $deviceLabel = '💻 حاسوب (macOS)';
+            } elseif (preg_match('/Linux/i', $uaRow)) {
+                $deviceType = 'desktop';
+                $osName = 'Linux';
+                $deviceLabel = '💻 حاسوب (Linux)';
             }
         }
 
@@ -1352,12 +1383,14 @@ final class TeacherPortalController
                 'last_ip'        => (string)$lastIp,
                 'device_type'    => $deviceType,
                 'device_label'   => $deviceLabel,
+                'os_name'        => $osName,
                 'user_agent'     => $uaRow,
             ],
             'aggregates' => [
                 'last_ip'           => (string)$lastIp,
                 'device_type'       => $deviceType,
                 'device_label'      => $deviceLabel,
+                'os_name'           => $osName,
                 'exams_count'       => (int)($agg['exams_count'] ?? 0),
                 'sessions_count'    => (int)($agg['sessions_count'] ?? 0),
                 'total_events'      => (int)($agg['total_events'] ?? 0),

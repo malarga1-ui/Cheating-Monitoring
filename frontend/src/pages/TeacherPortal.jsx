@@ -931,15 +931,22 @@ function StudentDetail() {
               </span>
             </div>
             <div className="flex justify-between items-center text-xs pt-2 border-t border-violet-200/60">
-              <span className="text-slate-600 font-extrabold">جهاز الطالب:</span>
+              <span className="text-slate-600 font-extrabold">جهاز ونظام الطالب:</span>
               <span className={`px-2.5 py-1 rounded-md font-extrabold text-xs shadow-sm ${
                 (s.device_type === 'mobile' || agg.device_type === 'mobile' || /Mobile|Android|iPhone|iPad|iPod/i.test(s.user_agent || ''))
                   ? 'bg-amber-100 text-amber-800 ring-1 ring-amber-300'
                   : 'bg-sky-100 text-sky-800 ring-1 ring-sky-300'
               }`}>
-                {(s.device_type === 'mobile' || agg.device_type === 'mobile' || /Mobile|Android|iPhone|iPad|iPod/i.test(s.user_agent || ''))
-                  ? '📱 هاتف محمول'
-                  : '💻 حاسوب / لاب توب'}
+                {s.device_label || agg.device_label || (
+                  /iPhone/i.test(s.user_agent || '') ? '📱 هاتف (iPhone)' :
+                  /iPad/i.test(s.user_agent || '') ? '📱 لوحي (iPad)' :
+                  /Android/i.test(s.user_agent || '') ? '📱 هاتف (Android)' :
+                  /Windows Phone/i.test(s.user_agent || '') ? '📱 هاتف (Windows Phone)' :
+                  /Mobile|iPod/i.test(s.user_agent || '') ? '📱 هاتف محمول' :
+                  /Macintosh|Mac OS X/i.test(s.user_agent || '') ? '💻 حاسوب (macOS)' :
+                  /Linux/i.test(s.user_agent || '') ? '💻 حاسوب (Linux)' :
+                  '💻 حاسوب (Windows)'
+                )}
               </span>
             </div>
             <div className="flex justify-between items-center text-xs pt-2 border-t border-violet-200/60">
