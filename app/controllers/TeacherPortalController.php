@@ -1284,6 +1284,25 @@ final class TeacherPortalController
             [$actualStudentId, $moodleUserId, $actualStudentId, $moodleUserId, $actualStudentId, $moodleUserId]
         );
 
+        $uaRow = (string)Database::scalar(
+            "SELECT COALESCE(
+                (SELECT sd.user_agent FROM student_devices sd WHERE (sd.student_id = ? OR sd.student_id = ?) AND sd.user_agent IS NOT NULL AND sd.user_agent != '' ORDER BY sd.id DESC LIMIT 1),
+                (SELECT st.user_agent FROM student_telemetry st WHERE (st.student_id = ? OR st.student_id = ?) AND st.user_agent IS NOT NULL AND st.user_agent != '' ORDER BY st.id DESC LIMIT 1),
+                (SELECT JSON_UNQUOTE(JSON_EXTRACT(ev.payload, '$.browser.user_agent')) FROM events ev WHERE (ev.moodle_user_id = ? OR ev.moodle_user_id = ?) AND JSON_EXTRACT(ev.payload, '$.browser.user_agent') IS NOT NULL ORDER BY ev.id DESC LIMIT 1),
+                ''
+            )",
+            [$actualStudentId, $moodleUserId, $actualStudentId, $moodleUserId, $actualStudentId, $moodleUserId]
+        );
+
+        $deviceType = 'desktop';
+        $deviceLabel = 'حاسوب / لاب توب 💻';
+        if ($uaRow !== '') {
+            if (preg_match('/Mobile|Android|iPhone|iPad|iPod|Windows Phone|BlackBerry|Opera Mini|IEMobile/i', $uaRow)) {
+                $deviceType = 'mobile';
+                $deviceLabel = 'هاتف محمول 📱';
+            }
+        }
+
         $agg = Database::fetchOne(
             "SELECT
                 COUNT(DISTINCT ss.exam_id) AS exams_count,
@@ -1326,14 +1345,19 @@ final class TeacherPortalController
 
         Response::ok([
             'student' => [
-                'id'          => (int)$student['id'],
-                'fullname'    => $student['fullname'],
-                'username'    => $student['username'],
+                'id'             => (int)$student['id'],
+                'fullname'       => $student['fullname'],
+                'username'       => $student['username'],
                 'moodle_user_id' => (int)$student['moodle_user_id'],
-                'last_ip'     => (string)$lastIp,
+                'last_ip'        => (string)$lastIp,
+                'device_type'    => $deviceType,
+                'device_label'   => $deviceLabel,
+                'user_agent'     => $uaRow,
             ],
             'aggregates' => [
                 'last_ip'           => (string)$lastIp,
+                'device_type'       => $deviceType,
+                'device_label'      => $deviceLabel,
                 'exams_count'       => (int)($agg['exams_count'] ?? 0),
                 'sessions_count'    => (int)($agg['sessions_count'] ?? 0),
                 'total_events'      => (int)($agg['total_events'] ?? 0),

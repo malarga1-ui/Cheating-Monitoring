@@ -923,14 +923,28 @@ function StudentDetail() {
             <h3 className="text-sm font-extrabold text-violet-800">الشبكة والأجهزة (Network)</h3>
             <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-100/80 text-violet-600 shadow-sm">🌐</span>
           </div>
-          <div className="relative space-y-4">
-            <div className="flex flex-col text-sm pt-1">
-              <span className="text-xs text-slate-500 font-bold mb-1">آخر IP مستخدم:</span>
-              <span className="font-mono text-sm font-extrabold text-slate-700" dir="ltr">{s.last_ip || (sessions[0]?.ip_address || 'غير متوفر')}</span>
+          <div className="relative space-y-3">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-slate-500 font-bold">آخر IP مستخدم (حقيقي):</span>
+              <span className="font-mono text-xs font-extrabold text-slate-700 bg-slate-100 px-2 py-0.5 rounded" dir="ltr">
+                {s.last_ip || agg.last_ip || (sessions[0]?.ip_address || 'غير متوفر')}
+              </span>
             </div>
-            <div className="flex justify-between items-center text-sm pt-3 border-t border-violet-200/60">
-              <span className="text-slate-600 text-xs font-extrabold">مشاركة الـ IP مع طلاب آخرين:</span>
-              <span className={`px-2 py-1 rounded-md font-extrabold text-xs ${agg.max_ip_group > 0 ? 'bg-violet-100 text-violet-700' : 'bg-emerald-50 text-emerald-600'}`}>
+            <div className="flex justify-between items-center text-xs pt-2 border-t border-violet-200/60">
+              <span className="text-slate-600 font-extrabold">جهاز الطالب:</span>
+              <span className={`px-2.5 py-1 rounded-md font-extrabold text-xs shadow-sm ${
+                (s.device_type === 'mobile' || agg.device_type === 'mobile' || /Mobile|Android|iPhone|iPad|iPod/i.test(s.user_agent || ''))
+                  ? 'bg-amber-100 text-amber-800 ring-1 ring-amber-300'
+                  : 'bg-sky-100 text-sky-800 ring-1 ring-sky-300'
+              }`}>
+                {(s.device_type === 'mobile' || agg.device_type === 'mobile' || /Mobile|Android|iPhone|iPad|iPod/i.test(s.user_agent || ''))
+                  ? '📱 هاتف محمول'
+                  : '💻 حاسوب / لاب توب'}
+              </span>
+            </div>
+            <div className="flex justify-between items-center text-xs pt-2 border-t border-violet-200/60">
+              <span className="text-slate-600 font-extrabold">مشاركة الـ IP مع آخرين:</span>
+              <span className={`px-2 py-0.5 rounded-md font-extrabold text-xs ${agg.max_ip_group > 0 ? 'bg-violet-100 text-violet-700' : 'bg-emerald-50 text-emerald-600'}`}>
                 {agg.max_ip_group > 0 ? `${agg.max_ip_group} طلاب` : 'لا يوجد'}
               </span>
             </div>
