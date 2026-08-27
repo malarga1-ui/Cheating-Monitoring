@@ -70,7 +70,24 @@ function GaugeCircle({ value, max = 100, color, label }) {
   )
 }
 
-export default function TeacherAnalytics({ courseId: propCourseId, examId: propExamId }) {
+const DEFAULT_THREAT_TYPES = [
+  { type: 'tab_hidden', count: 0 },
+  { type: 'copy', count: 0 },
+  { type: 'paste', count: 0 },
+  { type: 'devtools_opened', count: 0 },
+  { type: 'rapid_answer_changes', count: 0 },
+  { type: 'right_click', count: 0 },
+]
+
+const DEFAULT_RISK_DIST = [
+  { level: 'critical', count: 0 },
+  { level: 'high', count: 0 },
+  { level: 'medium', count: 0 },
+  { level: 'low', count: 0 },
+  { level: 'safe', count: 0 },
+]
+
+export default function TeacherAnalytics({ courseId: propCourseId, examId: propExamId, isLiveDashboard = false, hasActiveExam = false }) {
   const params = useParams()
   const examId = propExamId || params.id || params.examId
   const courseId = propCourseId || params.courseId
@@ -103,6 +120,8 @@ export default function TeacherAnalytics({ courseId: propCourseId, examId: propE
             setExamStudents(list)
           })
           .catch(() => setExamStudents([]))
+      } else {
+        setExamStudents(null)
       }
     }
     load()
@@ -139,22 +158,23 @@ export default function TeacherAnalytics({ courseId: propCourseId, examId: propE
     }
   }
 
-  if (err && !data) return <div className="rounded-2xl bg-rose-50 p-6 text-center"><p className="text-sm font-bold text-rose-600">{err}</p></div>
-  if (!data) return <Spinner />
+  if (err && !data && (examId || courseId)) return <div className="rounded-2xl bg-rose-50 p-6 text-center"><p className="text-sm font-bold text-rose-600">{err}</p></div>
+  if (!data && (examId || courseId)) return <Spinner />
 
-  const t = data.totals || {}
-  const examMeta = data.exam || null
-  const riskDist = data.risk_distribution || []
-  const eventTypes = data.event_types || []
-  const eventsOverTime = data.events_over_time || []
-  const catAvg = data.category_averages || {}
-  const flags = data.flags || {}
-  const topRisky = data.top_risky || []
+  const isIdleDashboard = isLiveDashboard && !hasActiveExam
+  const t = isIdleDashboard ? { students: 0, sessions: 0, events: 0, suspicious: 0 } : (data?.totals || {})
+  const examMeta = isIdleDashboard ? null : (data?.exam || null)
+  const riskDist = (isIdleDashboard || !data?.risk_distribution?.length) ? DEFAULT_RISK_DIST : data.risk_distribution
+  const eventTypes = (isIdleDashboard || !data?.event_types?.length) ? DEFAULT_THREAT_TYPES : data.event_types
+  const eventsOverTime = isIdleDashboard ? [] : (data?.events_over_time || [])
+  const catAvg = isIdleDashboard ? { risk: 0, network: 0, ai: 0, similarity: 0 } : (data?.category_averages || {})
+  const flags = isIdleDashboard ? {} : (data?.flags || {})
+  const topRisky = isIdleDashboard ? [] : (data?.top_risky || [])
   const maxRiskCount = Math.max(...riskDist.map(r => r.count), 1)
   const maxThreat = Math.max(...eventTypes.map(t2 => t2.count), 1)
 
   // Determine students source: examStudents if exam-scoped, else topRisky
-  const rawStudents = examStudents !== null ? examStudents : topRisky
+  const rawStudents = isIdleDashboard ? [] : (examStudents !== null ? examStudents : topRisky)
 
   const filteredStudents = rawStudents.filter(s => {
     if (q) {
@@ -174,6 +194,40 @@ export default function TeacherAnalytics({ courseId: propCourseId, examId: propE
 
   return (
     <div className="space-y-8">
+      {/* Friendly Notice Banner when No Active Exam */}
+      {isIdleDashboard && (
+        <Reveal>
+          <div className="relative overflow-hidden rounded-3xl border border-sky-200/80 bg-gradient-to-r from-sky-50/90 via-white to-indigo-50/70 p-6 shadow-sm ring-1 ring-sky-100/50">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-600 text-white shadow-md shadow-sky-500/20 text-2xl">
+                🎓
+              </div>
+              <div className="flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-base font-extrabold text-slate-800">
+                    لا توجد امتحانات جارية حالياً للمدرس
+                  </h2>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-100 px-3 py-0.5 text-xs font-extrabold text-sky-700 ring-1 ring-sky-200">
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-sky-500" />
+                    </span>
+                    وضع الجاهزية والاستعداد
+                  </span>
+                </div>
+                <p className="mt-1 text-xs font-bold leading-relaxed text-slate-600">
+                  لوحة التحكم جاهزة وفي وضع الاستعداد. فور بدء أي امتحان جديد لمساقاتك، ستتدفق البيانات والطلاب والانتهاكات تلقائياً هنا.
+                </p>
+                <div className="mt-2.5 flex items-center gap-2 rounded-xl bg-brand-50/80 px-3.5 py-2 text-xs font-extrabold text-brand-700 ring-1 ring-brand-200/60">
+                  <span>💡</span>
+                  <span>ملاحظة: للاطلاع على تفاصيل وتقارير الطلاب في الامتحانات السابقة التي تم تقديمها، يرجى الذهاب إلى تبويب "مساقاتي الدراسية" واختيار امتحانك المطلوب.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Reveal>
+      )}
+
       {/* Header */}
       <Reveal>
         {examId ? (
@@ -206,17 +260,21 @@ export default function TeacherAnalytics({ courseId: propCourseId, examId: propE
           <header className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-extrabold text-slate-800">التحليلات والتقارير المتقدمة</h1>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200">
+                <h1 className="text-2xl font-extrabold text-slate-800">
+                  {isLiveDashboard ? 'لوحة تحكم الامتحان المباشر' : 'التحليلات والتقارير المتقدمة'}
+                </h1>
+                <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold ring-1 ${hasActiveExam ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-slate-100 text-slate-600 ring-slate-200'}`}>
                   <span className="relative flex h-2 w-2">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"/>
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"/>
+                    <span className={`absolute inline-flex h-full w-full animate-ping rounded-full ${hasActiveExam ? 'bg-emerald-400' : 'bg-slate-400'} opacity-75`}/>
+                    <span className={`relative inline-flex h-2 w-2 rounded-full ${hasActiveExam ? 'bg-emerald-500' : 'bg-slate-500'}`}/>
                   </span>
-                  بث مباشر لحظي
+                  {hasActiveExam ? 'بث مباشر نشط' : 'بث مباشر (في الانتظار)'}
                 </span>
               </div>
               <p className="mt-1 text-sm text-slate-500">
-                نظرة شاملة على مؤشرات الغش والنزاهة الأكاديمية عبر امتحاناتك ومادتك التعليمية
+                {isLiveDashboard
+                  ? 'مراقبة فورية ومباشرة للطلاب والانتهاكات للامتحان الشغال في الوقت الحالي'
+                  : 'نظرة شاملة على مؤشرات الغش والنزاهة الأكاديمية عبر امتحاناتك ومادتك التعليمية'}
               </p>
             </div>
           </header>

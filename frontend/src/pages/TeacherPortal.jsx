@@ -88,14 +88,16 @@ export function ActionModal({ open, type, studentName, onConfirm, onCancel }) {
 }
 
 /* ─── Header ─────────────────────────────────────────────── */
-function Header({ courses = [] }) {
+function Header({ courses = [], activeExamsCount = 0 }) {
   const { user, logout } = useAuth()
-  const { t, lang, toggle } = useI18n()
+  const { t } = useI18n()
   const navigate = useNavigate()
   const loc = useLocation()
   const p = loc.pathname
 
   const isInsideCourse = p.includes('/teacher/portal/c/')
+  const isDashboardActive = p.includes('/teacher/portal/dashboard') || p === '/teacher/portal' || p === '/teacher/portal/'
+  const isCoursesActive = p.includes('/teacher/portal/courses')
 
   async function handleLogout() { await logout(); navigate('/teacher-login', { replace: true }) }
 
@@ -126,14 +128,6 @@ function Header({ courses = [] }) {
           </div>
         </div>
         <div className="ms-auto flex items-center gap-2">
-          <span className="hidden items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-extrabold text-emerald-700 ring-1 ring-emerald-200/70 sm:inline-flex">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
-            </span>
-            بث مباشر لحظي
-          </span>
-          
           <button onClick={handleSync} disabled={syncing} className="hidden items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-extrabold text-slate-700 hover:bg-slate-200 disabled:opacity-50 sm:flex">
             <svg className={syncing ? "animate-spin" : ""} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21v-5h5"/></svg>
             مزامنة يدوية
@@ -148,8 +142,33 @@ function Header({ courses = [] }) {
       </div>
 
       {!isInsideCourse && (
-        <nav className="flex gap-1 overflow-x-auto border-t border-slate-100 px-5 py-1.5 lg:px-8">
-          <Link to="/teacher/portal/courses" className="flex items-center gap-2 rounded-xl bg-brand-50 px-4 py-2 text-xs font-extrabold text-brand-700 ring-1 ring-brand-200">
+        <nav className="flex gap-2 overflow-x-auto border-t border-slate-100 px-5 py-2 lg:px-8">
+          <Link
+            to="/teacher/portal/dashboard"
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-extrabold transition-all ${
+              isDashboardActive
+                ? 'bg-brand-600 text-white shadow-md shadow-brand-600/20'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            <span>🎛️</span>
+            <span>لوحة تحكم الامتحان المباشر</span>
+            {activeExamsCount > 0 && (
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+              </span>
+            )}
+          </Link>
+
+          <Link
+            to="/teacher/portal/courses"
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-extrabold transition-all ${
+              isCoursesActive
+                ? 'bg-brand-600 text-white shadow-md shadow-brand-600/20'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
             <span>📚</span>
             <span>مساقاتي الدراسية ({courses.length})</span>
           </Link>
@@ -1109,16 +1128,64 @@ function CourseWorkspace({ courses }) {
   )
 }
 
+/* ─── LIVE EXAM DASHBOARD TAB ────────────────────────────── */
+function LiveExamDashboard({ activeExams = [] }) {
+  const [selectedExamId, setSelectedExamId] = useState(null)
+
+  useEffect(() => {
+    if (activeExams.length > 0) {
+      if (!selectedExamId || !activeExams.some(e => String(e.id) === String(selectedExamId))) {
+        setSelectedExamId(activeExams[0].id)
+      }
+    } else {
+      setSelectedExamId(null)
+    }
+  }, [activeExams])
+
+  return (
+    <div className="space-y-6">
+      {activeExams.length > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-3 w-3">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-500" />
+            </span>
+            <span className="text-xs font-extrabold text-emerald-800">
+              يوجد ({activeExams.length}) امتحانات نشطة حالياً للمدرس — اختر الامتحان للمراقبة:
+            </span>
+          </div>
+          <select
+            value={selectedExamId || ''}
+            onChange={(e) => setSelectedExamId(e.target.value)}
+            className="rounded-xl border border-emerald-300 bg-white px-3.5 py-2 text-xs font-extrabold text-slate-700 outline-none shadow-sm"
+          >
+            {activeExams.map(ex => (
+              <option key={ex.id} value={ex.id}>
+                {ex.name} ({ex.course_name || 'مساق'})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      <TeacherAnalytics examId={selectedExamId} isLiveDashboard={true} hasActiveExam={activeExams.length > 0} />
+    </div>
+  )
+}
+
 /* ─── Main Export ────────────────────────────────────────── */
 export default function TeacherPortal() {
   const { user } = useAuth()
   const [courses, setCourses] = useState([])
+  const [activeExams, setActiveExams] = useState([])
   const [showTour, setShowTour] = useState(() => !localStorage.getItem('exammonitor_teacher_tour'))
 
   useEffect(() => {
     if (user && user.authType === 'teacher') {
       function load() {
         api.get('/api/teacher/courses').then(d => setCourses(Array.isArray(d) ? d : [])).catch(() => setCourses([]))
+        api.get('/api/teacher/exams?status=active').then(d => setActiveExams(Array.isArray(d) ? d : [])).catch(() => setActiveExams([]))
       }
       load()
       const timer = setInterval(load, 3000)
@@ -1141,10 +1208,11 @@ export default function TeacherPortal() {
           setShowTour(false)
         }} />
       )}
-      <Header courses={courses} />
+      <Header courses={courses} activeExamsCount={activeExams.length} />
       <main className="mx-auto max-w-6xl px-5 py-8 lg:px-8">
         <Routes>
-          <Route index element={<Navigate to="courses" replace />} />
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<LiveExamDashboard activeExams={activeExams} />} />
           <Route path="courses" element={<CoursesList courses={courses} />} />
           <Route path="c/:courseId/*" element={<CourseWorkspace courses={courses} />} />
           
@@ -1157,7 +1225,7 @@ export default function TeacherPortal() {
           <Route path="network" element={<NetworkAnalysis />} />
           <Route path="devices" element={<MultiDevice />} />
           <Route path="similarity" element={<SimilarityDetection />} />
-          <Route path="*" element={<Navigate to="courses" replace />} />
+          <Route path="*" element={<Navigate to="dashboard" replace />} />
         </Routes>
       </main>
     </div>
