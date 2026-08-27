@@ -343,10 +343,29 @@ final class TeacherActionController
             [$reduceWhere, $reduceParams] = $buildMatch('action_type = "reduce_time" AND status IN ("pending", "delivered", "acknowledged")');
             $totalReducedMinutes = (int)Database::scalar("SELECT COALESCE(SUM(minutes_to_reduce), 0) FROM teacher_actions WHERE $reduceWhere", $reduceParams);
 
+            // Extract attempt/session info if available to assist client-side quiz actions
+            $sessionInfo = null;
+            if ($sessionId !== '') {
+                try {
+                    $ssRow = Database::fetchOne(
+                        'SELECT session_id, student_id, exam_id FROM session_summaries WHERE session_id = ? OR id = ? LIMIT 1',
+                        [$sessionId, is_numeric($sessionId) ? (int)$sessionId : 0]
+                    );
+                    if ($ssRow) {
+                        $sessionInfo = [
+                            'session_id' => $ssRow['session_id'],
+                            'student_id' => (int)$ssRow['student_id'],
+                            'exam_id'    => (int)$ssRow['exam_id'],
+                        ];
+                    }
+                } catch (\Throwable $e) {}
+            }
+
             Response::json([
                 'actions' => $result,
                 'is_locked' => $isLocked,
                 'total_reduced_minutes' => $totalReducedMinutes,
+                'session_info' => $sessionInfo,
             ]);
         } catch (\Throwable $e) {
             error_log('[TeacherActionController::check] Error: ' . $e->getMessage());
