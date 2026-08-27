@@ -37,7 +37,7 @@ function Empty({ text = 'لا توجد بيانات' }) {
   )
 }
 
-function ConfirmModal({ open, title, message, onConfirm, onCancel }) {
+export function ConfirmModal({ open, title, message, onConfirm, onCancel }) {
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onCancel}>
@@ -53,7 +53,7 @@ function ConfirmModal({ open, title, message, onConfirm, onCancel }) {
   )
 }
 
-function ActionModal({ open, type, studentName, onConfirm, onCancel }) {
+export function ActionModal({ open, type, studentName, onConfirm, onCancel }) {
   const [message, setMessage] = useState('')
   const [minutes, setMinutes] = useState(5)
   useEffect(() => { setMessage(''); setMinutes(5) }, [open, type])
@@ -210,7 +210,7 @@ function ExamTable({ exams, onRowClick }) {
 }
 
 /* ─── Shared: Student Table ──────────────────────────────── */
-function StudentTable({ students, compact = false, onAction = null }) {
+export function StudentTable({ students, compact = false, onAction = null }) {
   const navigate = useNavigate()
   if (!Array.isArray(students) || students.length === 0) return <Empty />
   return (

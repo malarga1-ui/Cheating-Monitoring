@@ -396,23 +396,48 @@ final class TeacherPortalController
 
         $ids = Teachers::courseIds($accountId, $teacherId);
         $courseId = (int)($_GET['course_id'] ?? 0);
-        if ($courseId > 0) {
+        $examId = (int)($_GET['exam_id'] ?? 0);
+        $singleExam = null;
+
+        if ($examId > 0) {
+            $examRows = Database::fetchAll(
+                "SELECT e.id, e.moodle_quiz_id, e.moodle_course_id, e.name, e.status, c.name AS course_name
+                   FROM exams e
+                   LEFT JOIN courses c ON c.moodle_course_id = e.moodle_course_id AND c.account_id = e.account_id
+                  WHERE (e.id = ? OR e.moodle_quiz_id = ?) AND (e.account_id = ? OR e.account_id = 0)",
+                [$examId, $examId, $accountId]
+            );
+            if (!empty($examRows)) {
+                $singleExam = [
+                    'id'              => (int)$examRows[0]['id'],
+                    'moodle_quiz_id'  => (int)$examRows[0]['moodle_quiz_id'],
+                    'moodle_course_id'=> (int)$examRows[0]['moodle_course_id'],
+                    'name'            => $examRows[0]['name'],
+                    'status'          => $examRows[0]['status'],
+                    'course_name'     => $examRows[0]['course_name'] ?? '',
+                ];
+            }
+        } elseif ($courseId > 0) {
             $ids = [$courseId];
         }
-        if ($ids === []) {
-            Response::ok(self::emptyAnalytics());
-            return;
-        }
-        $in = self::safeInts($ids);
 
-        // Exam IDs owned by this teacher
-        $examRows = Database::fetchAll(
-            "SELECT e.id, e.moodle_quiz_id, e.name, e.status, c.name AS course_name
-               FROM exams e
-               LEFT JOIN courses c ON c.moodle_course_id = e.moodle_course_id AND c.account_id = e.account_id
-              WHERE e.account_id = ? AND e.moodle_course_id IN ($in)",
-            [$accountId]
-        );
+        if ($singleExam !== null) {
+            $examRows = [$singleExam];
+        } else {
+            if ($ids === []) {
+                Response::ok(self::emptyAnalytics());
+                return;
+            }
+            $in = self::safeInts($ids);
+            $examRows = Database::fetchAll(
+                "SELECT e.id, e.moodle_quiz_id, e.name, e.status, c.name AS course_name
+                   FROM exams e
+                   LEFT JOIN courses c ON c.moodle_course_id = e.moodle_course_id AND c.account_id = e.account_id
+                  WHERE e.account_id = ? AND e.moodle_course_id IN ($in)",
+                [$accountId]
+            );
+        }
+
         $examIds = array_map(fn($r) => (int)$r['id'], $examRows);
         if (empty($examIds)) {
             Response::ok(self::emptyAnalytics());
@@ -551,6 +576,7 @@ final class TeacherPortalController
                 'ai_score'      => (int)$r['ai_suspect_score'],
                 'sim_score'     => (int)$r['similarity_max_score'],
             ], $topRisky),
+            'exam' => $singleExam,
         ]);
     }
 
