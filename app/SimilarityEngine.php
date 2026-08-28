@@ -301,10 +301,10 @@ final class SimilarityEngine
         // Remove Arabic stop words
         $stopWords = ['في', 'من', 'على', 'ان', 'عن', 'مع', 'هذا', 'هذه', 'التي', 'الذي', 'كان', 'تكون', 'انها', 'انه', 'تم', 'او', 'ثم'];
         foreach ($stopWords as $sw) {
-            $text = preg_replace('/\b' => preg_quote($sw, '/') . '\b/u', '', $text);
+            $text = (string)preg_replace('/(?:\s|^)' . preg_quote($sw, '/') . '(?:\s|$)/u', ' ', $text);
         }
 
-        return preg_replace('/\s+/u', ' ', $text);
+        return (string)preg_replace('/\s+/u', ' ', $text);
     }
 
     /* ── Word Trigram Cosine (Eq 3.9) ────────────────────────── */
