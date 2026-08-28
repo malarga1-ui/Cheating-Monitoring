@@ -199,26 +199,76 @@ final class SimilarityEngine
     {
         $aQ = $a['questions'];
         $bQ = $b['questions'];
-        $commonQ = array_intersect_key($aQ, $bQ);
-        $total = count($commonQ);
 
-        if ($total < 1) {
-            return ['similarity' => 0, 'matched' => 0, 'total' => $total];
+        // Normalize question keys (e.g. "question-40-1" -> "q1", "1" -> "q1")
+        $normalizeKey = function(string $k): string {
+            if (preg_match('/(\d+)\s*$/', $k, $m)) {
+                return 'q' . $m[1];
+            }
+            return $k;
+        };
+
+        $aNorm = [];
+        foreach ($aQ as $k => $v) {
+            $aNorm[$normalizeKey((string)$k)] = $v;
         }
+        $bNorm = [];
+        foreach ($bQ as $k => $v) {
+            $bNorm[$normalizeKey((string)$k)] = $v;
+        }
+
+        $commonQ = array_intersect_key($aNorm, $bNorm);
+        $total = count($commonQ);
 
         $matchingQuestions = 0;
         $maxSimilarity = 0.0;
 
-        foreach ($commonQ as $qid => $aAns) {
-            $bAns = $bQ[$qid];
-            $textA = $aAns['answer_text'] ?? '';
-            $textB = $bAns['answer_text'] ?? '';
+        if ($total >= 1) {
+            foreach ($commonQ as $qid => $aAns) {
+                $bAns = $bNorm[$qid];
+                $textA = $aAns['answer_text'] ?? '';
+                $textB = $bAns['answer_text'] ?? '';
 
-            $sim = self::computeHybridSimilarity($textA, $textB);
-            $maxSimilarity = max($maxSimilarity, $sim);
+                $sim = self::computeHybridSimilarity($textA, $textB);
+                $maxSimilarity = max($maxSimilarity, $sim);
 
-            if ($sim >= self::PAIR_THRESHOLD) {
-                $matchingQuestions++;
+                if ($sim >= self::PAIR_THRESHOLD) {
+                    $matchingQuestions++;
+                }
+            }
+        } else {
+            // Content-based all-pairs matching across questions
+            $total = min(count($aQ), count($bQ));
+            if ($total < 1) {
+                return ['similarity' => 0, 'matched' => 0, 'total' => 0];
+            }
+
+            $usedB = [];
+            foreach ($aQ as $aAns) {
+                $textA = $aAns['answer_text'] ?? '';
+                if (trim($textA) === '') continue;
+
+                $bestSim = 0.0;
+                $bestBk = null;
+                foreach ($bQ as $bk => $bAns) {
+                    if (isset($usedB[$bk])) continue;
+                    $textB = $bAns['answer_text'] ?? '';
+                    if (trim($textB) === '') continue;
+
+                    $sim = self::computeHybridSimilarity($textA, $textB);
+                    if ($sim > $bestSim) {
+                        $bestSim = $sim;
+                        $bestBk = $bk;
+                    }
+                }
+
+                if ($bestBk !== null) {
+                    $usedB[$bestBk] = true;
+                }
+                $maxSimilarity = max($maxSimilarity, $bestSim);
+                if ($bestSim >= self::PAIR_THRESHOLD) {
+                    $matchingQuestions++;
+                }
             }
         }
 

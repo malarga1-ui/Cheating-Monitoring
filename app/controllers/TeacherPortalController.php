@@ -227,6 +227,8 @@ final class TeacherPortalController
         $internalExamId = (int)$exam['id'];
         $quizId = (int)$exam['moodle_quiz_id'];
 
+        try { SimilarityEngine::analyzeExam($accountId, $internalExamId); } catch (\Throwable $e) {}
+
         $counts = Database::fetchOne(
             'SELECT
                 (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = ? OR ss.exam_id = ?) AND (ss.account_id = ? OR ss.account_id = 0)) AS students_count,
@@ -990,7 +992,9 @@ final class TeacherPortalController
         if ($ids === []) { Response::ok([]); return; }
         $in = self::safeInts($ids);
 
-        $minSim = max(0, min(100, (int)($_GET['min_similarity'] ?? 30)));
+        try { Aggregator::process(500); } catch (\Throwable $e) {}
+
+        $minSim = max(0, min(100, (int)($_GET['min_similarity'] ?? 10)));
 
         $pairs = Database::fetchAll(
             "SELECT sp.student_a_id, sp.student_b_id, sp.similarity_pct,
