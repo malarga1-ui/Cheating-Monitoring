@@ -335,13 +335,37 @@ final class TeacherActionController
                 ];
             }
 
-            // 2. Check if permanently locked
-            [$lockWhere, $lockParams] = $buildMatch('action_type = "lock_exam" AND status IN ("pending", "delivered", "acknowledged")');
-            $isLocked = (bool)Database::scalar("SELECT 1 FROM teacher_actions WHERE $lockWhere LIMIT 1", $lockParams);
+            // 2. Check if current active session is locked
+            $isLocked = false;
+            if ($sessionId !== '') {
+                $isLocked = (bool)Database::scalar(
+                    "SELECT 1 FROM teacher_actions
+                      WHERE account_id = ?
+                        AND action_type = 'lock_exam'
+                        AND (session_summary_id = ? OR session_summary_id IN (SELECT id FROM session_summaries WHERE session_id = ?))
+                      LIMIT 1",
+                    [$accountId, is_numeric($sessionId) ? (int)$sessionId : 0, $sessionId]
+                );
+            }
+            // If any action in current batch is lock_exam, lock immediately
+            foreach ($result as $act) {
+                if ($act['action'] === 'lock_exam') {
+                    $isLocked = true;
+                    break;
+                }
+            }
 
-            // 3. Cumulative reduced minutes
-            [$reduceWhere, $reduceParams] = $buildMatch('action_type = "reduce_time" AND status IN ("pending", "delivered", "acknowledged")');
-            $totalReducedMinutes = (int)Database::scalar("SELECT COALESCE(SUM(minutes_to_reduce), 0) FROM teacher_actions WHERE $reduceWhere", $reduceParams);
+            // 3. Cumulative reduced minutes for current active session
+            $totalReducedMinutes = 0;
+            if ($sessionId !== '') {
+                $totalReducedMinutes = (int)Database::scalar(
+                    "SELECT COALESCE(SUM(minutes_to_reduce), 0) FROM teacher_actions
+                      WHERE account_id = ?
+                        AND action_type = 'reduce_time'
+                        AND (session_summary_id = ? OR session_summary_id IN (SELECT id FROM session_summaries WHERE session_id = ?))",
+                    [$accountId, is_numeric($sessionId) ? (int)$sessionId : 0, $sessionId]
+                );
+            }
 
             // Extract attempt/session info if available to assist client-side quiz actions
             $sessionInfo = null;
