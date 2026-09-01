@@ -151,9 +151,9 @@ final class TeacherPortalController
             $params[] = "%$search%";
         }
         if ($status === 'active') {
-            $extra .= " AND e.status = 'active' AND e.last_event_at IS NOT NULL AND e.last_event_at >= (NOW() - INTERVAL 30 MINUTE)";
+            $extra .= " AND (e.status = 'active' OR (e.last_event_at IS NOT NULL AND e.last_event_at >= (NOW() - INTERVAL 4 HOUR)))";
         } elseif ($status === 'ended') {
-            $extra .= " AND (e.status = 'ended' OR e.last_event_at IS NULL OR e.last_event_at < (NOW() - INTERVAL 30 MINUTE))";
+            $extra .= " AND (e.status = 'ended' AND (e.last_event_at IS NULL OR e.last_event_at < (NOW() - INTERVAL 4 HOUR)))";
         }
 
         $rows = Database::fetchAll(
@@ -1410,6 +1410,12 @@ final class TeacherPortalController
             ];
         }
 
+        $ipInfo = IPLookup::resolve((string)$lastIp);
+
+        // Calculate unique IPs used by student across all sessions
+        $allStudentIps = array_unique(array_filter(array_column($sessions, 'ip_address')));
+        $ipChangeCount = max(0, count($allStudentIps) - 1);
+
         Response::ok([
             'student' => [
                 'id'             => (int)$student['id'],
@@ -1417,6 +1423,9 @@ final class TeacherPortalController
                 'username'       => $student['username'],
                 'moodle_user_id' => (int)$student['moodle_user_id'],
                 'last_ip'        => (string)$lastIp,
+                'ip_info'        => $ipInfo,
+                'unique_ips'     => array_values($allStudentIps),
+                'ip_change_count'=> $ipChangeCount,
                 'device_type'    => $deviceType,
                 'device_label'   => $deviceLabel,
                 'os_name'        => $osName,
@@ -1424,6 +1433,9 @@ final class TeacherPortalController
             ],
             'aggregates' => [
                 'last_ip'           => (string)$lastIp,
+                'ip_info'           => $ipInfo,
+                'unique_ips'        => array_values($allStudentIps),
+                'ip_change_count'   => $ipChangeCount,
                 'device_type'       => $deviceType,
                 'device_label'      => $deviceLabel,
                 'os_name'           => $osName,

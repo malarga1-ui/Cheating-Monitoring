@@ -163,20 +163,21 @@ export default function TeacherAnalytics({ courseId: propCourseId, examId: propE
   if (err && !data && (examId || courseId)) return <div className="rounded-2xl bg-rose-50 p-6 text-center"><p className="text-sm font-bold text-rose-600">{err}</p></div>
   if (!data && (examId || courseId)) return <Spinner />
 
-  const isIdleDashboard = isLiveDashboard && !hasActiveExam
-  const t = isIdleDashboard ? { students: 0, sessions: 0, events: 0, suspicious: 0 } : (data?.totals || {})
-  const examMeta = isIdleDashboard ? null : (data?.exam || null)
-  const riskDist = (isIdleDashboard || !data?.risk_distribution?.length) ? DEFAULT_RISK_DIST : data.risk_distribution
-  const eventTypes = (isIdleDashboard || !data?.event_types?.length) ? DEFAULT_THREAT_TYPES : data.event_types
-  const eventsOverTime = isIdleDashboard ? [] : (data?.events_over_time || [])
-  const catAvg = isIdleDashboard ? { risk: 0, network: 0, ai: 0, similarity: 0 } : (data?.category_averages || {})
-  const flags = isIdleDashboard ? {} : (data?.flags || {})
-  const topRisky = isIdleDashboard ? [] : (data?.top_risky || [])
+  const hasRealData = Boolean((data?.totals?.sessions > 0) || (data?.totals?.students > 0) || (data?.top_risky?.length > 0) || (examStudents && examStudents.length > 0))
+  const isIdleDashboard = isLiveDashboard && !hasActiveExam && !hasRealData
+  const t = data?.totals || { students: 0, sessions: 0, events: 0, suspicious: 0 }
+  const examMeta = data?.exam || null
+  const riskDist = (!data?.risk_distribution?.length) ? DEFAULT_RISK_DIST : data.risk_distribution
+  const eventTypes = (!data?.event_types?.length) ? DEFAULT_THREAT_TYPES : data.event_types
+  const eventsOverTime = data?.events_over_time || []
+  const catAvg = data?.category_averages || { risk: 0, network: 0, ai: 0, similarity: 0 }
+  const flags = data?.flags || {}
+  const topRisky = data?.top_risky || []
   const maxRiskCount = Math.max(...riskDist.map(r => r.count), 1)
   const maxThreat = Math.max(...eventTypes.map(t2 => t2.count), 1)
 
   // Determine students source: examStudents if exam-scoped, else topRisky
-  const rawStudents = isIdleDashboard ? [] : (examStudents !== null ? examStudents : topRisky)
+  const rawStudents = (examStudents !== null ? examStudents : topRisky) || []
 
   const filteredStudents = rawStudents.filter(s => {
     if (q) {

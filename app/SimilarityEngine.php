@@ -148,20 +148,42 @@ final class SimilarityEngine
 
     /* ── Loaders ──────────────────────────────────────────────── */
 
+    private static function isObjectiveChoice(string $text, ?string $qType = null): bool
+    {
+        if ($qType !== null && in_array(strtolower($qType), ['multichoice', 'truefalse', 'true_false', 'match', 'matching', 'gapselect', 'ddwtos', 'mcq'], true)) {
+            return true;
+        }
+        $trimmed = trim(strip_tags($text));
+        if ($trimmed === '') return true;
+
+        // Check for simple single-choice tokens, numbers, or boolean words
+        if (preg_match('/^(true|false|yes|no|صح|خطأ|صواب|[a-fA-F0-9]|option\d*|choice\d*|item\d*|ans\d*)$/iu', $trimmed)) {
+            return true;
+        }
+
+        // Less than 3 words and less than 15 characters without spaces is likely an option label
+        $words = preg_split('/\s+/u', $trimmed, -1, PREG_SPLIT_NO_EMPTY);
+        if (count($words) < 3 && mb_strlen($trimmed) < 15) {
+            return true;
+        }
+
+        return false;
+    }
+
     private static function loadExamAnswers(PDO $db, int $accountId, int $intId, int $quizId): array
     {
         $st = $db->prepare(
-            "SELECT session_id, student_id, question_id, answer_text, answer_length, word_count
+            "SELECT session_id, student_id, question_id, question_type, answer_text, answer_length, word_count
              FROM answer_records
              WHERE (account_id = :a OR account_id = 0) AND (exam_id = :eid OR exam_id = :qid)
                AND TRIM(COALESCE(answer_text, '')) != ''
              ORDER BY student_id, question_id"
         );
         $st->execute([':a' => $accountId, ':eid' => $intId, ':qid' => $quizId]);
-        $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $rawRows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
         // Fallback: load directly from events table if answer_records is empty
-        if (empty($rows)) {
+        if (empty($rawRows)) {
             $evSt = $db->prepare(
                 "SELECT e.session_id,
                         COALESCE(NULLIF(e.moodle_user_id, 0), CAST(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.student.id')) AS UNSIGNED), 1) AS student_id,
@@ -170,6 +192,7 @@ final class SimilarityEngine
                             NULLIF(CAST(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.question.id')) AS UNSIGNED), 0),
                             1
                         ) AS question_id,
+                        JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.question_type')) AS question_type,
                         COALESCE(
                             JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.answer_text')),
                             JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.text')),
@@ -185,10 +208,21 @@ final class SimilarityEngine
                   ORDER BY e.id DESC"
             );
             $evSt->execute([':a' => $accountId, ':eid' => $intId, ':qid' => $quizId]);
-            $rows = $evSt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            $rawRows = $evSt->fetchAll(PDO::FETCH_ASSOC) ?: [];
         }
 
-        return $rows;
+        // STRICT FILTER: Exclude MCQ, True/False, and objective single-choice options
+        $filtered = [];
+        foreach ($rawRows as $r) {
+            $txt = (string)($r['answer_text'] ?? '');
+            $qType = (string)($r['question_type'] ?? '');
+            if (self::isObjectiveChoice($txt, $qType)) {
+                continue; // Skip MCQ and True/False
+            }
+            $filtered[] = $r;
+        }
+
+        return $filtered;
     }
 
     private static function groupByStudent(array $answers): array

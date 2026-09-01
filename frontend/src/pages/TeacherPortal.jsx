@@ -271,7 +271,14 @@ export function StudentTable({ students, compact = false, onAction = null }) {
                 {!compact && <td className="px-3 py-3 text-center text-xs font-bold text-slate-600">{s.exams_count || 0}</td>}
                 <td className="px-3 py-3 text-center"><RiskBadge level={s.risk_level} score={s.risk_score || s.max_risk_score} /></td>
                 <td className="px-3 py-3 text-center">
-                  <span className={`text-xs font-extrabold tabular-nums ${(s.risk_score || 0) >= 60 ? 'text-rose-600' : (s.risk_score || 0) >= 30 ? 'text-amber-600' : 'text-emerald-600'}`}>{s.risk_score || 0}</span>
+                  {(() => {
+                    const bScore = s.behavioral_score ?? s.behavior_score ?? (s.categories?.behavioral?.score) ?? Math.min(100, Math.round((Math.min(1, (s.tab_hidden_count || s.tab_hidden || 0) / 6) * 0.4 + Math.min(1, ((s.paste_count || 0) + (s.copy_count || 0)) / 12) * 0.6) * 100))
+                    return (
+                      <span className={`text-xs font-extrabold tabular-nums ${bScore >= 60 ? 'text-rose-600' : bScore >= 30 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                        {bScore}
+                      </span>
+                    )
+                  })()}
                 </td>
                 <td className="px-3 py-3 text-center">
                   {(s.same_ip_student_count > 0 || (s.same_ip > 0)) ? (
@@ -941,12 +948,40 @@ function StudentDetail() {
             <h3 className="text-sm font-extrabold text-violet-800">الشبكة والأجهزة (Network)</h3>
             <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-100/80 text-violet-600 shadow-sm">🌐</span>
           </div>
-          <div className="relative space-y-3">
+          <div className="relative space-y-2.5">
             <div className="flex justify-between items-center text-xs">
-              <span className="text-slate-500 font-bold">آخر IP مستخدم (حقيقي):</span>
+              <span className="text-slate-500 font-bold">آخر IP مستخدم:</span>
               <span className="font-mono text-xs font-extrabold text-slate-700 bg-slate-100 px-2 py-0.5 rounded" dir="ltr">
                 {s.last_ip || agg.last_ip || (sessions[0]?.ip_address || 'غير متوفر')}
               </span>
+            </div>
+            {(s.ip_info || agg.ip_info) && (
+              <>
+                <div className="flex justify-between items-center text-xs pt-1.5 border-t border-violet-100">
+                  <span className="text-slate-500 font-bold">مزود الإنترنت (ISP):</span>
+                  <span className="font-extrabold text-brand-700 max-w-[170px] truncate text-start" title={(s.ip_info || agg.ip_info).isp}>
+                    🌐 {(s.ip_info || agg.ip_info).isp}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-xs pt-1.5 border-t border-violet-100">
+                  <span className="text-slate-500 font-bold">الموقع الجغرافي:</span>
+                  <span className="font-bold text-slate-700">
+                    📍 {(s.ip_info || agg.ip_info).city}
+                  </span>
+                </div>
+              </>
+            )}
+            <div className="flex justify-between items-center text-xs pt-1.5 border-t border-violet-100">
+              <span className="text-slate-500 font-bold">تغيّر الـ IP أثناء الامتحان:</span>
+              {(s.ip_change_count > 0 || agg.ip_change_count > 0) ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-0.5 font-extrabold text-[11px] text-rose-700 ring-1 ring-rose-300 animate-pulse">
+                  ⚠ تغيّر ({s.ip_change_count || agg.ip_change_count} مرات)
+                </span>
+              ) : (
+                <span className="rounded bg-emerald-50 px-2 py-0.5 font-bold text-[11px] text-emerald-700">
+                  ✓ ثابت (نفس الشبكة)
+                </span>
+              )}
             </div>
             <div className="flex justify-between items-center text-xs pt-2 border-t border-violet-200/60">
               <span className="text-slate-600 font-extrabold">جهاز ونظام الطالب:</span>

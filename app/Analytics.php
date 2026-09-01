@@ -177,6 +177,8 @@ final class Analytics
                     'ip_addresses' => (string)($r['ip_addresses'] ?? ''),
                     'risk_score' => $risk['score'],
                     'risk_level' => $risk['level'],
+                    'behavioral_score' => (int)($risk['categories']['behavioral']['score'] ?? 0),
+                    'categories' => $risk['categories'] ?? [],
                     'contributions' => $risk['contributions'],
                 ];
             }
