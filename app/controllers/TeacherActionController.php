@@ -222,6 +222,60 @@ final class TeacherActionController
     }
 
     /**
+     * POST /api/teacher/actions/unlock
+     * Body: { exam_id, session_summary_id, student_id }
+     */
+    public static function unlockExam(): void
+    {
+        self::ensureTables();
+        Auth::requireTeacher();
+        Auth::guardStateChangingRequest();
+        $accountId = Auth::accountId();
+        $teacherId = Auth::teacherId();
+        $body = em_body_json() ?? [];
+
+        $examId = (int)($body['exam_id'] ?? 0);
+        $studentId = (int)($body['student_id'] ?? ($body['studentId'] ?? ($body['id'] ?? 0)));
+        $sessionId = (int)($body['session_summary_id'] ?? ($body['sessionId'] ?? 0));
+
+        if ($examId <= 0 || $studentId <= 0) {
+            Response::error('رقم الامتحان ورقم الطالب مطلوبان', 422);
+        }
+
+        $exam = self::requireExamOwnership($accountId, $teacherId, $examId);
+        $internalExamId = (int)$exam['id'];
+
+        if ($sessionId <= 0) {
+            $foundId = Database::scalar(
+                'SELECT id FROM session_summaries WHERE (exam_id = ? OR exam_id = ?) AND (student_id = ? OR student_id IN (SELECT id FROM students WHERE moodle_user_id = ?)) ORDER BY id DESC LIMIT 1',
+                [$internalExamId, (int)$exam['moodle_quiz_id'], $studentId, $studentId]
+            );
+            $sessionId = $foundId ? (int)$foundId : 0;
+        }
+
+        // Expire any existing locks
+        Database::execute(
+            'UPDATE teacher_actions SET status = "expired" WHERE exam_id = ? AND student_id = ? AND action_type = "lock_exam"',
+            [$internalExamId, $studentId]
+        );
+
+        Database::execute(
+            'INSERT INTO teacher_actions
+                (account_id, exam_id, session_summary_id, student_id, teacher_id, action_type, status, created_at)
+             VALUES (?, ?, ?, ?, ?, "unlock_exam", "pending", NOW())',
+            [$accountId, $internalExamId, $sessionId, $studentId, $teacherId]
+        );
+        $actionId = (int)Database::scalar('SELECT LAST_INSERT_ID()');
+
+        Database::execute(
+            'INSERT INTO teacher_action_log (action_id, event_type, created_at) VALUES (?, "created", NOW())',
+            [$actionId]
+        );
+
+        Response::ok(['ok' => true, 'action_id' => $actionId]);
+    }
+
+    /**
      * Set CORS headers for Moodle plugin requests.
      */
     private static function corsHeaders(): void
@@ -335,23 +389,26 @@ final class TeacherActionController
                 ];
             }
 
-            // 2. Check if current active session is locked
+            // 2. Check if current active session is locked (based on latest lock/unlock action)
             $isLocked = false;
             if ($sessionId !== '') {
-                $isLocked = (bool)Database::scalar(
-                    "SELECT 1 FROM teacher_actions
+                $latestLock = Database::fetchOne(
+                    "SELECT action_type FROM teacher_actions
                       WHERE account_id = ?
-                        AND action_type = 'lock_exam'
+                        AND action_type IN ('lock_exam', 'unlock_exam')
+                        AND status IN ('pending', 'delivered')
                         AND (session_summary_id = ? OR session_summary_id IN (SELECT id FROM session_summaries WHERE session_id = ?))
-                      LIMIT 1",
+                      ORDER BY id DESC LIMIT 1",
                     [$accountId, is_numeric($sessionId) ? (int)$sessionId : 0, $sessionId]
                 );
+                $isLocked = ($latestLock && $latestLock['action_type'] === 'lock_exam');
             }
-            // If any action in current batch is lock_exam, lock immediately
+            // If any action in current pending batch is lock_exam or unlock_exam
             foreach ($result as $act) {
                 if ($act['action'] === 'lock_exam') {
                     $isLocked = true;
-                    break;
+                } elseif ($act['action'] === 'unlock_exam') {
+                    $isLocked = false;
                 }
             }
 

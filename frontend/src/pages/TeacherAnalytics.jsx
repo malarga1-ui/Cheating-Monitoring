@@ -132,7 +132,7 @@ export default function TeacherAnalytics({ courseId: propCourseId, examId: propE
   async function handleAction(type, actionParams) {
     setActionModal({ open: false, type: '', student: null })
     try {
-      const endpoint = type === 'message' ? 'message' : type === 'lock' ? 'lock' : 'reduce-time'
+      const endpoint = type === 'message' ? 'message' : type === 'lock' ? 'lock' : type === 'unlock' ? 'unlock' : 'reduce-time'
       const sid = actionModal.student?.student_id || actionModal.student?.id || actionModal.student?.moodle_user_id || 0
       const ssid = actionModal.student?.session_summary_id || 0
       const targetExamId = examId ? parseInt(examId) : (actionModal.student?.exam_id || 0)
@@ -151,6 +151,8 @@ export default function TeacherAnalytics({ courseId: propCourseId, examId: propE
           ? 'تم إرسال الرسالة وسيتلقاها الطالب في الامتحان فوراً.'
           : type === 'lock'
           ? 'تم قفل الامتحان عن الطالب فوراً.'
+          : type === 'unlock'
+          ? 'تم إلغاء قفل الامتحان وسيعود الطالب لاستكمال امتحانه فوراً.'
           : `تم تقليص الوقت بـ ${actionParams.minutes || 5} دقائق.`
       })
     } catch (e) {

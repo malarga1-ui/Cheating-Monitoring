@@ -58,8 +58,8 @@ export function ActionModal({ open, type, studentName, onConfirm, onCancel }) {
   const [minutes, setMinutes] = useState(5)
   useEffect(() => { setMessage(''); setMinutes(5) }, [open, type])
   if (!open) return null
-  const titles = { message: 'إرسال رسالة تحذيرية', lock: 'قفل الامتحان', 'reduce-time': 'تقليص الوقت' }
-  const colors = { message: 'bg-amber-500 hover:bg-amber-600', lock: 'bg-rose-600 hover:bg-rose-700', 'reduce-time': 'bg-violet-600 hover:bg-violet-700' }
+  const titles = { message: 'إرسال رسالة تحذيرية', lock: 'قفل الامتحان', unlock: 'إلغاء قفل الامتحان', 'reduce-time': 'تقليص الوقت' }
+  const colors = { message: 'bg-amber-500 hover:bg-amber-600', lock: 'bg-rose-600 hover:bg-rose-700', unlock: 'bg-emerald-600 hover:bg-emerald-700', 'reduce-time': 'bg-violet-600 hover:bg-violet-700' }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onCancel}>
       <div className="mx-4 w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -77,7 +77,8 @@ export function ActionModal({ open, type, studentName, onConfirm, onCancel }) {
             ))}
           </div>
         )}
-        {type === 'lock' && <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3"><p className="text-sm font-bold text-rose-700">⚠ هذا الإجراء نهائي!</p></div>}
+        {type === 'lock' && <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3"><p className="text-sm font-bold text-rose-700">⚠ هذا الإجراء سيقفل الامتحان عن الطالب!</p></div>}
+        {type === 'unlock' && <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3"><p className="text-sm font-bold text-emerald-700">✓ سيتم إلغاء القفل والسماح للطالب باستكمال الامتحان فوراً.</p></div>}
         <div className="mt-6 flex gap-3">
           <button onClick={onCancel} className="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-600">إلغاء</button>
           <button onClick={() => { if (type === 'message' && !message.trim()) return; onConfirm(type === 'message' ? { message } : type === 'reduce-time' ? { minutes } : {}) }} disabled={type === 'message' && !message.trim()} className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-extrabold text-white active:scale-[.98] disabled:opacity-50 ${colors[type]}`}>تأكيد</button>
@@ -319,6 +320,13 @@ export function StudentTable({ students, compact = false, onAction = null }) {
                         className="rounded-lg bg-rose-50 p-1.5 text-xs font-bold text-rose-700 ring-1 ring-rose-200 transition hover:bg-rose-100"
                       >
                         🔒 قفل
+                      </button>
+                      <button
+                        title="إلغاء قفل الامتحان عن الطالب"
+                        onClick={() => onAction('unlock', s)}
+                        className="rounded-lg bg-emerald-50 p-1.5 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200 transition hover:bg-emerald-100"
+                      >
+                        🔓 فتح
                       </button>
                     </div>
                   </td>
@@ -673,11 +681,21 @@ function ExamDetail() {
   async function handleAction(type, params) {
     setActionModal({ open: false, type: '', student: null })
     try {
-      const endpoint = type === 'message' ? 'message' : type === 'lock' ? 'lock' : 'reduce-time'
+      const endpoint = type === 'message' ? 'message' : type === 'lock' ? 'lock' : type === 'unlock' ? 'unlock' : 'reduce-time'
       const sid = actionModal.student?.student_id || actionModal.student?.id || actionModal.student?.moodle_user_id || 0
       const ssid = actionModal.student?.session_summary_id || 0
       await api.post(`/api/teacher/actions/${endpoint}`, { exam_id: parseInt(id), session_summary_id: ssid, student_id: sid, ...params })
-      setConfirmModal({ open: true, title: 'تم بنجاح', message: type === 'message' ? 'تم إرسال الرسالة وسيتلقاها الطالب في الامتحان فوراً.' : type === 'lock' ? 'تم قفل الامتحان عن الطالب فوراً.' : `تم تقليص الوقت بـ ${params.minutes || 5} دقائق.` })
+      setConfirmModal({
+        open: true,
+        title: 'تم بنجاح',
+        message: type === 'message'
+          ? 'تم إرسال الرسالة وسيتلقاها الطالب في الامتحان فوراً.'
+          : type === 'lock'
+          ? 'تم قفل الامتحان عن الطالب فوراً.'
+          : type === 'unlock'
+          ? 'تم إلغاء قفل الامتحان وسيعود الطالب لاستكمال امتحانه فوراً.'
+          : `تم تقليص الوقت بـ ${params.minutes || 5} دقائق.`
+      })
     } catch (e) {
       setConfirmModal({ open: true, title: 'تنبيه', message: e.message || 'تعذر إرسال الإجراء' })
     }

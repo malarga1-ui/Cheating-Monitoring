@@ -103,6 +103,7 @@ $router->any('/api/teacher/actions/check', [TeacherActionController::class, 'che
 $router->any('/api/teacher/actions/{id}/ack', [TeacherActionController::class, 'acknowledge']);
 $router->post('/api/teacher/actions/message', [TeacherActionController::class, 'sendMessage']);
 $router->post('/api/teacher/actions/lock', [TeacherActionController::class, 'lockExam']);
+$router->post('/api/teacher/actions/unlock', [TeacherActionController::class, 'unlockExam']);
 $router->post('/api/teacher/actions/reduce-time', [TeacherActionController::class, 'reduceTime']);
 $router->get('/api/teacher/actions/{examId}/log', [TeacherActionController::class, 'log']);
 
