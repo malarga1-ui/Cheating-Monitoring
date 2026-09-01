@@ -17,9 +17,10 @@ final class Analytics
             [$examId, $examId, $explicitAccountId]
         );
         $internalExamId = $exam ? (int)$exam['id'] : $examId;
-        $questionCount = (int)($exam['question_count'] ?? 0);
-        $examMinutes   = (int)($exam['duration_minutes'] ?? 0);
-        $accountId     = $explicitAccountId > 0 ? $explicitAccountId : (int)($exam['account_id'] ?? 0);
+        $mQuizId        = $exam ? (int)$exam['moodle_quiz_id'] : $examId;
+        $questionCount  = (int)($exam['question_count'] ?? 0);
+        $examMinutes    = (int)($exam['duration_minutes'] ?? 0);
+        $accountId      = $explicitAccountId > 0 ? $explicitAccountId : (int)($exam['account_id'] ?? 0);
 
         if ($questionCount <= 0) {
             $dynQ = (int)Database::scalar(
