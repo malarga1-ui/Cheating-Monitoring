@@ -27,6 +27,14 @@ final class TelemetryController
             Response::empty(400);
         }
 
+        // Decrypt payload if encrypted with AES-256-GCM
+        $decrypted = Crypto::decryptIfEncrypted($body, (string)$account['sync_secret']);
+        if ($decrypted === null) {
+            error_log('[ExamMonitor] Telemetry decryption failed');
+            Response::empty(400);
+        }
+        $body = $decrypted;
+
         // Handle batch format: { events: [...] } or direct array of events or single event
         $events = $body;
         if (isset($body['events']) && is_array($body['events'])) {

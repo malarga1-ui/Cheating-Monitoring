@@ -307,7 +307,9 @@ final class TeacherActionController
             $secret = $_SERVER['HTTP_X_EXAM_MONITOR_SECRET'] ?? ($_GET['k'] ?? '');
             $body = em_body_json() ?? [];
             $pluginSecret = (string)($body['secret'] ?? $secret);
-            $sessionId = (string)($body['session_id'] ?? ($_GET['session_id'] ?? ''));
+            if ($pluginSecret === '' && !empty($_SERVER['HTTP_X_EXAM_MONITOR_SECRET'])) {
+                $pluginSecret = $_SERVER['HTTP_X_EXAM_MONITOR_SECRET'];
+            }
 
             if ($pluginSecret === '') {
                 Response::json(['actions' => []]);
@@ -321,6 +323,13 @@ final class TeacherActionController
             }
             $accountId = (int)$account['id'];
 
+            // Decrypt if client sent an encrypted envelope
+            $decrypted = Crypto::decryptIfEncrypted($body, (string)$account['sync_secret']);
+            if (is_array($decrypted)) {
+                $body = $decrypted;
+            }
+
+            $sessionId = (string)($body['session_id'] ?? ($_GET['session_id'] ?? ''));
             $studentId = (int)($body['student_id'] ?? ($_GET['student_id'] ?? 0));
             $examId = (int)($body['exam_id'] ?? ($_GET['exam_id'] ?? 0));
 
