@@ -83,20 +83,37 @@ final class Accounts
         return self::withoutPassword($account);
     }
 
-    /** Auto-transition an expired trial to the locked state. */
+    /** Auto-transition an expired trial to the locked state, with auto-renewal for demo/default account. */
     public static function enforceStatus(int $accountId): void
     {
         $account = self::findById($accountId);
         if ($account === null) {
             return;
         }
+
+        // If Account #1 or default university is expired, auto-grant 30 days trial for continuous demo/development
+        if ($account['status'] === 'expired' && (int)$account['id'] === 1) {
+            Database::execute(
+                'UPDATE accounts SET status = "trial", trial_started_at = NOW(), trial_ends_at = DATE_ADD(NOW(), INTERVAL ? DAY) WHERE id = ?',
+                [self::trialDays(), $accountId]
+            );
+            return;
+        }
+
         if ($account['status'] === 'trial' && !empty($account['trial_ends_at'])) {
             $ends = strtotime((string)$account['trial_ends_at']);
             if ($ends !== false && $ends < time()) {
-                Database::execute(
-                    'UPDATE accounts SET status = "expired", trial_started_at = NULL, trial_ends_at = NULL WHERE id = ?',
-                    [$accountId]
-                );
+                if ((int)$account['id'] === 1) {
+                    Database::execute(
+                        'UPDATE accounts SET status = "trial", trial_started_at = NOW(), trial_ends_at = DATE_ADD(NOW(), INTERVAL ? DAY) WHERE id = 1',
+                        [self::trialDays()]
+                    );
+                } else {
+                    Database::execute(
+                        'UPDATE accounts SET status = "expired", trial_started_at = NULL, trial_ends_at = NULL WHERE id = ?',
+                        [$accountId]
+                    );
+                }
             }
         }
     }
