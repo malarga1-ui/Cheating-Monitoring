@@ -1364,6 +1364,9 @@ final class TeacherPortalController
             "SELECT ar.question_id, ar.question_type, ar.answer_text, ar.answer_length,
                     ar.word_count, ar.typing_duration_ms, ar.change_count,
                     ar.ai_score, ar.ai_detection_provider, ar.created_at,
+                    COALESCE(ar.similarity_score, 0) AS similarity_score,
+                    COALESCE(ar.similarity_with_student_id, 0) AS similarity_with_student_id,
+                    st_p.fullname AS partner_fullname, st_p.username AS partner_username,
                     e.name AS exam_name, ar.exam_id
                FROM answer_records ar
                INNER JOIN (
@@ -1372,11 +1375,40 @@ final class TeacherPortalController
                   GROUP BY question_id
                ) latest ON ar.id = latest.max_id
                JOIN exams e ON (e.id = ar.exam_id OR e.moodle_quiz_id = ar.exam_id)
+               LEFT JOIN students st_p ON (st_p.id = ar.similarity_with_student_id OR st_p.moodle_user_id = ar.similarity_with_student_id)
               WHERE (ar.student_id = ? OR ar.student_id = ?) AND (ar.account_id = ? OR ar.account_id = 0) AND e.moodle_course_id IN ($in)
               ORDER BY ar.created_at DESC
               LIMIT 100",
             [$actualStudentId, $moodleUserId, $accountId, $actualStudentId, $moodleUserId, $accountId]
         );
+
+        // Fetch deep clipboard history (copies and pastes with full text)
+        $clipboardEvents = Database::fetchAll(
+            "SELECT ev.id, ev.event_type, ev.event_time, ev.session_id, ev.payload
+             FROM events ev
+             JOIN exams e ON (e.moodle_quiz_id = ev.moodle_quiz_id OR e.id = ev.moodle_quiz_id)
+             WHERE (ev.moodle_user_id = ? OR ev.moodle_user_id = ?) AND (ev.account_id = ? OR ev.account_id = 0)
+               AND e.moodle_course_id IN ($in)
+               AND ev.event_type IN ('copy', 'paste', 'cut')
+             ORDER BY ev.event_time DESC
+             LIMIT 100",
+            [$actualStudentId, $moodleUserId, $accountId]
+        );
+
+        $formattedClipboard = [];
+        foreach ($clipboardEvents as $cev) {
+            $p = json_decode($cev['payload'], true) ?: [];
+            $meta = $p['metadata'] ?? [];
+            $formattedClipboard[] = [
+                'id'             => (int)$cev['id'],
+                'type'           => $cev['event_type'],
+                'event_time'     => $cev['event_time'],
+                'text'           => (string)($meta['pasted_text'] ?? ($meta['selection_text'] ?? ($meta['selected_text'] ?? ''))),
+                'length'         => (int)($meta['pasted_length'] ?? ($meta['selection_length'] ?? 0)),
+                'question_id'    => $meta['question_id'] ?? ($meta['question']['question_number'] ?? null),
+                'question_type'  => $meta['question_type'] ?? ($meta['question']['question_type'] ?? null),
+            ];
+        }
 
         Response::ok([
             'student' => [
@@ -1410,26 +1442,33 @@ final class TeacherPortalController
                 'first_seen'        => $agg['first_seen'],
                 'last_seen'         => $agg['last_seen'],
             ],
-            'sessions' => array_map(fn($s) => [
-                'session_id'           => $s['session_id'],
-                'exam_id'              => (int)$s['exam_id'],
-                'exam_name'            => $s['exam_name'],
-                'course_name'          => $s['course_name'],
-                'ip_address'           => !empty($s['ip_address']) ? (string)$s['ip_address'] : (string)$lastIp,
-                'started_at'           => $s['first_event_at'],
-                'last_event_at'        => $s['last_event_at'],
-                'event_count'          => (int)$s['event_count'],
-                'risk_score'           => (int)$s['risk_score'],
-                'risk_level'           => $s['risk_level'],
-                'ai_suspect_score'     => (int)$s['ai_suspect_score'],
-                'same_ip_student_count'=> (int)$s['same_ip_student_count'],
-                'same_ip_risk_score'   => (int)$s['same_ip_risk_score'],
-                'similarity_max_score' => (int)$s['similarity_max_score'],
-                'tab_hidden_count'     => (int)$s['tab_hidden_count'],
-                'paste_count'          => (int)$s['paste_count'],
-                'copy_count'           => (int)$s['copy_count'],
-                'devtools_count'       => (int)$s['devtools_count'],
-            ], $sessions),
+            'sessions' => array_map(function($s) use ($lastIp) {
+                $started = $s['first_event_at'];
+                $last = $s['last_event_at'];
+                $spent = ($started && $last) ? max(0, strtotime($last) - strtotime($started)) : 0;
+                return [
+                    'session_id'           => $s['session_id'],
+                    'exam_id'              => (int)$s['exam_id'],
+                    'exam_name'            => $s['exam_name'],
+                    'course_name'          => $s['course_name'],
+                    'duration_minutes'     => (int)($s['duration_minutes'] ?? 0),
+                    'time_spent_seconds'   => $spent,
+                    'ip_address'           => !empty($s['ip_address']) ? (string)$s['ip_address'] : (string)$lastIp,
+                    'started_at'           => $s['first_event_at'],
+                    'last_event_at'        => $s['last_event_at'],
+                    'event_count'          => (int)$s['event_count'],
+                    'risk_score'           => (int)$s['risk_score'],
+                    'risk_level'           => $s['risk_level'],
+                    'ai_suspect_score'     => (int)$s['ai_suspect_score'],
+                    'same_ip_student_count'=> (int)$s['same_ip_student_count'],
+                    'same_ip_risk_score'   => (int)$s['same_ip_risk_score'],
+                    'similarity_max_score' => (int)$s['similarity_max_score'],
+                    'tab_hidden_count'     => (int)$s['tab_hidden_count'],
+                    'paste_count'          => (int)$s['paste_count'],
+                    'copy_count'           => (int)$s['copy_count'],
+                    'devtools_count'       => (int)$s['devtools_count'],
+                ];
+            }, $sessions),
             'answers' => array_map(fn($a) => [
                 'question_id'          => $a['question_id'],
                 'question_type'        => $a['question_type'],
@@ -1440,10 +1479,15 @@ final class TeacherPortalController
                 'change_count'         => (int)$a['change_count'],
                 'ai_score'             => (int)$a['ai_score'],
                 'ai_detection_provider'=> $a['ai_detection_provider'] ?? '',
+                'similarity_score'     => (int)($a['similarity_score'] ?? 0),
+                'similarity_with_id'   => (int)($a['similarity_with_student_id'] ?? 0),
+                'partner_name'         => $a['partner_fullname'] ?? '',
+                'partner_username'     => $a['partner_username'] ?? '',
                 'created_at'           => $a['created_at'],
                 'exam_name'            => $a['exam_name'],
                 'exam_id'              => (int)$a['exam_id'],
             ], $answers),
+            'clipboard' => $formattedClipboard,
         ]);
     }
 

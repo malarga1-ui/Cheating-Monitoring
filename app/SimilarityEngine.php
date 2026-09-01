@@ -46,8 +46,56 @@ final class SimilarityEngine
 
         $sessions = self::buildSessionSummary($pairs);
         self::persistSessionScores($db, $sessions);
+        self::persistQuestionSimilarityScores($db, $pairs);
 
         return ['pairs' => $pairs, 'sessions' => $sessions];
+    }
+
+    /** Persist per-question similarity and partner student IDs to answer_records */
+    private static function persistQuestionSimilarityScores(PDO $db, array $pairs): void
+    {
+        try {
+            $db->exec("ALTER TABLE answer_records ADD COLUMN IF NOT EXISTS similarity_score SMALLINT NOT NULL DEFAULT 0");
+            $db->exec("ALTER TABLE answer_records ADD COLUMN IF NOT EXISTS similarity_with_student_id INT UNSIGNED NOT NULL DEFAULT 0");
+
+            $updQSt = $db->prepare(
+                "UPDATE answer_records 
+                 SET similarity_score = GREATEST(similarity_score, :sim),
+                     similarity_with_student_id = CASE WHEN :sim >= similarity_score THEN :partner_id ELSE similarity_with_student_id END
+                 WHERE session_id = :sid AND (question_id = :qid OR question_id = :norm_qid)"
+            );
+
+            foreach ($pairs as $p) {
+                if ($p['similarity'] < 10) continue;
+                $sA = $p['session_a'];
+                $sB = $p['session_b'];
+                $stA = (int)$p['student_a'];
+                $stB = (int)$p['student_b'];
+                $qMatches = $p['question_matches'] ?? [];
+
+                foreach ($qMatches as $qid => $qInfo) {
+                    $simVal = (int)($qInfo['similarity'] ?? 0);
+                    if ($simVal <= 0) continue;
+                    $normQid = preg_replace('/^.*?(\d+)$/', 'q$1', (string)$qid);
+
+                    $updQSt->execute([
+                        ':sim'        => $simVal,
+                        ':partner_id' => $stB,
+                        ':sid'        => $sA,
+                        ':qid'        => (string)$qid,
+                        ':norm_qid'   => $normQid,
+                    ]);
+
+                    $updQSt->execute([
+                        ':sim'        => $simVal,
+                        ':partner_id' => $stA,
+                        ':sid'        => $sB,
+                        ':qid'        => (string)$qid,
+                        ':norm_qid'   => $normQid,
+                    ]);
+                }
+            }
+        } catch (\Throwable $e) {}
     }
 
     /**
@@ -177,13 +225,14 @@ final class SimilarityEngine
                 $result = self::compareTwo($a, $b);
 
                 $pairs[] = [
-                    'session_a'  => $students[$i],
-                    'session_b'  => $students[$j],
-                    'student_a'  => $a['student_id'],
-                    'student_b'  => $b['student_id'],
-                    'similarity' => $result['similarity'],
-                    'matched'    => $result['matched'],
-                    'total'      => $result['total'],
+                    'session_a'         => $students[$i],
+                    'session_b'         => $students[$j],
+                    'student_a'         => $a['student_id'],
+                    'student_b'         => $b['student_id'],
+                    'similarity'        => $result['similarity'],
+                    'matched'           => $result['matched'],
+                    'total'             => $result['total'],
+                    'question_matches'  => $result['question_matches'] ?? [],
                 ];
             }
         }
@@ -222,6 +271,7 @@ final class SimilarityEngine
 
         $matchingQuestions = 0;
         $maxSimilarity = 0.0;
+        $questionMatches = [];
 
         if ($total >= 1) {
             foreach ($commonQ as $qid => $aAns) {
@@ -231,6 +281,8 @@ final class SimilarityEngine
 
                 $sim = self::computeHybridSimilarity($textA, $textB);
                 $maxSimilarity = max($maxSimilarity, $sim);
+                $simPct = (int)round($sim * 100);
+                $questionMatches[$qid] = ['similarity' => $simPct, 'matched' => ($sim >= self::PAIR_THRESHOLD)];
 
                 if ($sim >= self::PAIR_THRESHOLD) {
                     $matchingQuestions++;
@@ -240,11 +292,11 @@ final class SimilarityEngine
             // Content-based all-pairs matching across questions
             $total = min(count($aQ), count($bQ));
             if ($total < 1) {
-                return ['similarity' => 0, 'matched' => 0, 'total' => 0];
+                return ['similarity' => 0, 'matched' => 0, 'total' => 0, 'question_matches' => []];
             }
 
             $usedB = [];
-            foreach ($aQ as $aAns) {
+            foreach ($aQ as $ak => $aAns) {
                 $textA = $aAns['answer_text'] ?? '';
                 if (trim($textA) === '') continue;
 
@@ -266,6 +318,9 @@ final class SimilarityEngine
                     $usedB[$bestBk] = true;
                 }
                 $maxSimilarity = max($maxSimilarity, $bestSim);
+                $simPct = (int)round($bestSim * 100);
+                $questionMatches[$ak] = ['similarity' => $simPct, 'matched' => ($bestSim >= self::PAIR_THRESHOLD)];
+
                 if ($bestSim >= self::PAIR_THRESHOLD) {
                     $matchingQuestions++;
                 }
@@ -279,9 +334,10 @@ final class SimilarityEngine
         }
 
         return [
-            'similarity' => min(100, $similarityPct),
-            'matched'    => $matchingQuestions,
-            'total'      => $total,
+            'similarity'        => min(100, $similarityPct),
+            'matched'           => $matchingQuestions,
+            'total'             => $total,
+            'question_matches'  => $questionMatches,
         ];
     }
 

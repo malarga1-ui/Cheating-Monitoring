@@ -17,10 +17,20 @@ final class Analytics
             [$examId, $examId, $explicitAccountId]
         );
         $internalExamId = $exam ? (int)$exam['id'] : $examId;
-        $mQuizId = $exam ? (int)$exam['moodle_quiz_id'] : $examId;
         $questionCount = (int)($exam['question_count'] ?? 0);
         $examMinutes   = (int)($exam['duration_minutes'] ?? 0);
         $accountId     = $explicitAccountId > 0 ? $explicitAccountId : (int)($exam['account_id'] ?? 0);
+
+        if ($questionCount <= 0) {
+            $dynQ = (int)Database::scalar(
+                "SELECT COUNT(DISTINCT question_id) FROM answer_records WHERE (exam_id = ? OR exam_id = ?) AND TRIM(question_id) != ''",
+                [$internalExamId, $mQuizId]
+            );
+            $questionCount = max(1, $dynQ);
+        }
+        if ($examMinutes <= 0) {
+            $examMinutes = 15;
+        }
 
         // Ensure any pending events are processed into session_summaries
         try { Aggregator::process(2000); } catch (\Throwable $e) {}

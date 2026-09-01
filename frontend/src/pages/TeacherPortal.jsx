@@ -961,34 +961,46 @@ function StudentDetail() {
 
       {sessions.length > 0 && (
         <section>
-          <h3 className="mb-3 text-sm font-extrabold text-slate-700">الجلسات ({sessions.length})</h3>
+          <h3 className="mb-3 text-sm font-extrabold text-slate-700">الجلسات والوقت المقضي ({sessions.length})</h3>
           <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/70 text-xs font-extrabold text-slate-500">
                   <th className="px-4 py-3 text-start">الامتحان</th>
                   <th className="px-4 py-3 text-start">المساق</th>
-                  <th className="px-4 py-3 text-center">التهديدات</th>
+                  <th className="px-3 py-3 text-center">مدة الامتحان</th>
+                  <th className="px-3 py-3 text-center">الوقت المستغرق</th>
+                  <th className="px-3 py-3 text-center">التهديدات</th>
                   <th className="px-3 py-3 text-center">الدرجة</th>
-                  <th className="px-3 py-3 text-center">🤖</th>
-                  <th className="px-3 py-3 text-center">🌐</th>
-                  <th className="px-3 py-3 text-center">🔗</th>
-                  <th className="px-4 py-3 text-start">الوقت</th>
+                  <th className="px-3 py-3 text-center">🤖 AI</th>
+                  <th className="px-3 py-3 text-center">🔗 تشابه</th>
+                  <th className="px-4 py-3 text-start">البدء</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {sessions.map(ss => (
-                  <tr key={ss.session_id} className="hover:bg-slate-50/50">
-                    <td className="px-4 py-3 font-bold text-slate-700">{ss.exam_name}</td>
-                    <td className="px-4 py-3 text-slate-500 text-xs">{ss.course_name || '—'}</td>
-                    <td className="px-4 py-3 text-center font-bold">{ss.event_count}</td>
-                    <td className="px-3 py-3 text-center"><RiskBadge level={ss.risk_level} score={ss.risk_score} /></td>
-                    <td className="px-3 py-3 text-center text-xs font-bold">{ss.ai_suspect_score}%</td>
-                    <td className="px-3 py-3 text-center text-xs font-bold">{ss.same_ip_student_count > 0 ? `${ss.same_ip_student_count} ط` : '—'}</td>
-                    <td className="px-3 py-3 text-center text-xs font-bold">{ss.similarity_max_score}%</td>
-                    <td className="px-4 py-3 text-xs text-slate-500">{ss.started_at || '—'}</td>
-                  </tr>
-                ))}
+                {sessions.map(ss => {
+                  const spentMins = Math.floor((ss.time_spent_seconds || 0) / 60)
+                  const spentSecs = (ss.time_spent_seconds || 0) % 60
+                  return (
+                    <tr key={ss.session_id} className="hover:bg-slate-50/50">
+                      <td className="px-4 py-3 font-bold text-slate-700">{ss.exam_name}</td>
+                      <td className="px-4 py-3 text-slate-500 text-xs">{ss.course_name || '—'}</td>
+                      <td className="px-3 py-3 text-center text-xs font-bold text-slate-600">
+                        {ss.duration_minutes > 0 ? `${ss.duration_minutes} دقيقة` : '—'}
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        <span className="inline-flex rounded-lg bg-slate-100 px-2 py-0.5 text-xs font-extrabold text-slate-700" dir="ltr">
+                          {spentMins}m {spentSecs}s
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-center font-bold">{ss.event_count}</td>
+                      <td className="px-3 py-3 text-center"><RiskBadge level={ss.risk_level} score={ss.risk_score} /></td>
+                      <td className="px-3 py-3 text-center text-xs font-bold">{ss.ai_suspect_score}%</td>
+                      <td className="px-3 py-3 text-center text-xs font-bold text-amber-600">{ss.similarity_max_score}%</td>
+                      <td className="px-4 py-3 text-xs text-slate-500">{ss.started_at || '—'}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -997,31 +1009,108 @@ function StudentDetail() {
 
       {answers.length > 0 && (
         <section>
-          <h3 className="mb-3 text-sm font-extrabold text-slate-700">آخر الإجابات ({answers.length})</h3>
+          <h3 className="mb-3 text-sm font-extrabold text-slate-700">فحص الإجابات والتشابه والذكاء الاصطناعي بالسؤال ({answers.length})</h3>
           <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/70 text-xs font-extrabold text-slate-500">
-                  <th className="px-4 py-3 text-start">السؤال</th>
-                  <th className="px-4 py-3 text-start">الامتحان</th>
-                  <th className="px-3 py-3 text-center">الطول</th>
-                  <th className="px-3 py-3 text-center">🤖 AI</th>
+                  <th className="px-4 py-3 text-start">السؤال / النوع</th>
+                  <th className="px-4 py-3 text-start">إجابة الطالب</th>
+                  <th className="px-3 py-3 text-center">الكلمات</th>
+                  <th className="px-3 py-3 text-center">🤖 كشف الـ AI</th>
+                  <th className="px-4 py-3 text-start">🔗 التشابه بالسؤال والشريك</th>
                   <th className="px-4 py-3 text-start">التاريخ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {answers.map((a, i) => (
                   <tr key={i} className="hover:bg-slate-50/50">
-                    <td className="px-4 py-3">
-                      <p className="font-bold text-slate-700 text-xs">{a.question_id}</p>
-                      {a.answer_text && <p className="mt-0.5 text-[11px] text-slate-400 truncate max-w-xs">{a.answer_text.slice(0, 80)}</p>}
+                    <td className="px-4 py-3 align-top">
+                      <p className="font-bold text-slate-800 text-xs">{a.question_id}</p>
+                      <span className="mt-0.5 inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
+                        {a.question_type || 'نص'}
+                      </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-500">{a.exam_name}</td>
-                    <td className="px-3 py-3 text-center text-xs font-bold">{a.word_count || 0} كلمة</td>
-                    <td className="px-3 py-3 text-center">
-                      {(a.ai_score || 0) >= 50 ? <span className="inline-flex rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] font-bold text-cyan-700">{a.ai_score}%</span> : <span className="text-[10px] font-bold text-slate-400">{a.ai_score || 0}%</span>}
+                    <td className="px-4 py-3 align-top">
+                      <div className="max-w-md rounded-xl bg-slate-50 border border-slate-200/60 p-2.5 text-xs text-slate-800 font-medium leading-relaxed select-text">
+                        {a.answer_text ? a.answer_text : <span className="text-slate-400 italic">إجابة فارغة</span>}
+                      </div>
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-500">{a.created_at || '—'}</td>
+                    <td className="px-3 py-3 text-center align-top text-xs font-bold text-slate-600">
+                      {a.word_count || 0} كلمة
+                    </td>
+                    <td className="px-3 py-3 text-center align-top">
+                      {(a.ai_score || 0) >= 50 ? (
+                        <span className="inline-flex rounded-full bg-cyan-100 border border-cyan-300 px-2.5 py-0.5 text-xs font-extrabold text-cyan-800">
+                          🤖 {a.ai_score}%
+                        </span>
+                      ) : (
+                        <span className="text-xs font-bold text-slate-400">{a.ai_score || 0}%</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      {(a.similarity_score || 0) >= 70 ? (
+                        <div>
+                          <span className="inline-flex rounded-full bg-amber-100 border border-amber-300 px-2.5 py-0.5 text-xs font-extrabold text-amber-800">
+                            🔗 {a.similarity_score}% تطابق
+                          </span>
+                          {a.partner_name && (
+                            <p className="mt-1 text-xs font-bold text-slate-700">
+                              مع الطالب: <span className="text-brand-600">{a.partner_name}</span>
+                            </p>
+                          )}
+                        </div>
+                      ) : (a.similarity_score || 0) > 0 ? (
+                        <span className="text-xs font-bold text-slate-500">{a.similarity_score}%</span>
+                      ) : (
+                        <span className="text-xs font-bold text-emerald-600">فريد (0%)</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-500 align-top">{a.created_at || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {data.clipboard?.length > 0 && (
+        <section>
+          <h3 className="mb-3 text-sm font-extrabold text-slate-700">سجل الحافظة والنصوص المنسوخة والملصوقة ({data.clipboard.length})</h3>
+          <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/70 text-xs font-extrabold text-slate-500">
+                  <th className="px-4 py-3 text-start">النوع</th>
+                  <th className="px-4 py-3 text-start">النص بالكامل</th>
+                  <th className="px-3 py-3 text-center">عدد الأحرف</th>
+                  <th className="px-4 py-3 text-start">التوقيت</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {data.clipboard.map((c, idx) => (
+                  <tr key={idx} className="hover:bg-slate-50/50">
+                    <td className="px-4 py-3 align-top">
+                      {c.type === 'paste' ? (
+                        <span className="inline-flex rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-extrabold text-rose-700">
+                          📥 لصق
+                        </span>
+                      ) : (
+                        <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-extrabold text-amber-700">
+                          📋 نسخ
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <div className="max-w-xl rounded-xl bg-slate-50 border border-slate-200/60 p-2.5 text-xs text-slate-800 font-mono select-text break-words">
+                        {c.text ? c.text : <span className="text-slate-400 italic">نص غير متاح</span>}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-center align-top text-xs font-bold text-slate-600">
+                      {c.length || c.text?.length || 0}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-500 align-top">{c.event_time || '—'}</td>
                   </tr>
                 ))}
               </tbody>
