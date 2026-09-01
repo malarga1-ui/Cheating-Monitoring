@@ -46,7 +46,7 @@ return [
     // License / trial activation (used by the "تسجيل الشراء" flow)
     'license' => [
         'secret' => getenv('EM_LICENSE_SECRET') ?: 'em-license-secret-change-me',
-        'trial_days' => (int)(getenv('EM_TRIAL_DAYS') ?: 7),
+        'trial_days' => (int)(getenv('EM_TRIAL_DAYS') ?: 30),
     ],
 
     // Security

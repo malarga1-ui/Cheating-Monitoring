@@ -14,8 +14,8 @@ final class Accounts
     /** Trial length in days (config license.trial_days). */
     public static function trialDays(): int
     {
-        $d = (int)em_config('license.trial_days', 7);
-        return $d > 0 ? $d : 7;
+        $d = (int)em_config('license.trial_days', 30);
+        return $d > 0 ? $d : 30;
     }
 
     /**
