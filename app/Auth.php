@@ -189,6 +189,11 @@ final class Auth
         return ($_SESSION['role'] ?? '') === 'owner';
     }
 
+    public static function isCustomer(): bool
+    {
+        return ($_SESSION['role'] ?? '') === 'customer';
+    }
+
     /**
      * Tenant scope: null = owner (all data); otherwise the account_id the
      * customer/teacher may see.
@@ -339,7 +344,7 @@ final class Auth
     public static function requireTeacher(): void
     {
         self::requireLogin();
-        if ((self::isTeacher() && self::teacherId() > 0) || self::isOwner() || self::isCustomer()) {
+        if ((self::isTeacher() && self::teacherId() > 0) || self::isOwner() || self::isCustomer() || self::isStaffAdmin()) {
             return;
         }
         Response::error('هذا المسار مخصص لحساب المدرّس فقط', 403);
