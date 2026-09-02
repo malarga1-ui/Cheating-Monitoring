@@ -339,9 +339,10 @@ final class Auth
     public static function requireTeacher(): void
     {
         self::requireLogin();
-        if (!self::isTeacher() || self::teacherId() <= 0) {
-            Response::error('هذا المسار مخصص لحساب المدرّس فقط', 403);
+        if ((self::isTeacher() && self::teacherId() > 0) || self::isOwner() || self::isCustomer()) {
+            return;
         }
+        Response::error('هذا المسار مخصص لحساب المدرّس فقط', 403);
     }
 
     /**

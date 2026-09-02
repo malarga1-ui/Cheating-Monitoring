@@ -1,0 +1,290 @@
+{
+  "_comment": "ExamMonitor Telemetry Dataset Samples for Master Thesis / Research Paper",
+  "_schema_version": "1.0",
+  "_description": "Realistic JSON telemetry payloads ingested by the SOAR Exam Monitoring Platform via POST /telemetry",
+  "samples": [
+    {
+      "scenario": "1. Heartbeat Telemetry (نبض المراقبة وقياسات الجهاز)",
+      "description": "يرسل دورياً كل 15-30 ثانية لتأكيد اتصال الطالب وجمع البصمة الرقمية وبيانات البيئة ومواصفات الجهاز.",
+      "payload": {
+        "schema_version": "1.0",
+        "event_id": "em_evt_84f9a012c8b74e",
+        "session_id": "sess_haitham_quiz1_66d4181a",
+        "sequence_number": 14,
+        "event_type": "heartbeat",
+        "timestamp": "2026-09-02T06:15:30.412Z",
+        "elapsed_ms": 184500,
+        "source": {
+          "layer": "browser_side",
+          "component": "moodle_quiz_monitor",
+          "plugin": "quizaccess_exammonitor"
+        },
+        "moodle": {
+          "site_url": "https://moodle.luckydraw.world",
+          "student": {
+            "id": 40,
+            "username": "user040",
+            "fullname": "هيثم الغول",
+            "email": "user040@student.edu"
+          },
+          "teacher": [
+            {
+              "id": 2,
+              "fullname": "د. رامي أحمد"
+            }
+          ],
+          "quiz": {
+            "id": 1,
+            "name": "اختبار أسئلة دينية عامة",
+            "course_id": 3,
+            "course_name": "دراسات إسلامية معاصرة",
+            "cmid": 15,
+            "attempt_id": 104
+          }
+        },
+        "browser": {
+          "url": "https://moodle.luckydraw.world/mod/quiz/attempt.php?attempt=104&cmid=15",
+          "title": "اختبار أسئلة دينية عامة: محاولة 1",
+          "visibility_state": "visible",
+          "has_focus": true,
+          "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+          "language": "ar-SA",
+          "platform": "Win32"
+        },
+        "network": {
+          "online": true,
+          "effective_type": "4g",
+          "downlink": 15.4,
+          "rtt": 42
+        },
+        "metadata": {
+          "device_telemetry": {
+            "fingerprint_hash": "a1f89c02d91b453e990cba76",
+            "screen_resolution": "1920x1080",
+            "cpu_cores": 8,
+            "client_timezone": "Asia/Jerusalem",
+            "device_memory_gb": 8,
+            "language": "ar-SA",
+            "platform": "Win32"
+          },
+          "active_question_id": "q4",
+          "viewport_width": 1920,
+          "viewport_height": 945,
+          "scroll_top": 420
+        }
+      }
+    },
+    {
+      "scenario": "2. Tab Hidden & Duration (مغادرة تبويب الامتحان وقياس مدة الغياب)",
+      "description": "يتم إطلاقه فور تحويل الطالب لنافذة أخرى أو تصغير المتصفح، متبوعاً بحساب دقيق لمدة الغياب بالمللي ثانية.",
+      "payload": {
+        "schema_version": "1.0",
+        "event_id": "em_evt_92bb7103fa1289",
+        "session_id": "sess_haitham_quiz1_66d4181a",
+        "sequence_number": 18,
+        "event_type": "tab_hidden_duration",
+        "timestamp": "2026-09-02T06:17:15.820Z",
+        "elapsed_ms": 289900,
+        "source": {
+          "layer": "browser_side",
+          "component": "moodle_quiz_monitor",
+          "plugin": "quizaccess_exammonitor"
+        },
+        "moodle": {
+          "site_url": "https://moodle.luckydraw.world",
+          "student": {
+            "id": 40,
+            "username": "user040",
+            "fullname": "هيثم الغول"
+          },
+          "quiz": {
+            "id": 1,
+            "name": "اختبار أسئلة دينية عامة",
+            "attempt_id": 104
+          }
+        },
+        "browser": {
+          "url": "https://moodle.luckydraw.world/mod/quiz/attempt.php?attempt=104&cmid=15",
+          "visibility_state": "visible",
+          "has_focus": true,
+          "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128.0.0.0 Safari/537.36"
+        },
+        "metadata": {
+          "duration_ms": 26400,
+          "duration_seconds": 26.4,
+          "reason": "visibility_change_hidden_to_visible",
+          "active_question_id": "q4",
+          "device_telemetry": {
+            "fingerprint_hash": "a1f89c02d91b453e990cba76",
+            "screen_resolution": "1920x1080"
+          }
+        }
+      }
+    },
+    {
+      "scenario": "3. Unauthorized Paste Event (لصق نص خارجي في سؤال مقالي)",
+      "description": "يلتقط تفاصيل محاولة لصق نص مشبوه (مثلاً من ChatGPT أو مصدر خارجي) داخل حقل الإجابة، مع احتساب الطول والكلمات.",
+      "payload": {
+        "schema_version": "1.0",
+        "event_id": "em_evt_bb4781ca2901ee",
+        "session_id": "sess_haitham_quiz1_66d4181a",
+        "sequence_number": 23,
+        "event_type": "paste",
+        "timestamp": "2026-09-02T06:17:18.104Z",
+        "elapsed_ms": 292184,
+        "source": {
+          "layer": "browser_side",
+          "component": "moodle_quiz_monitor",
+          "plugin": "quizaccess_exammonitor"
+        },
+        "moodle": {
+          "site_url": "https://moodle.luckydraw.world",
+          "student": {
+            "id": 40,
+            "username": "user040",
+            "fullname": "هيثم الغول"
+          },
+          "quiz": {
+            "id": 1,
+            "name": "اختبار أسئلة دينية عامة",
+            "attempt_id": 104
+          }
+        },
+        "browser": {
+          "url": "https://moodle.luckydraw.world/mod/quiz/attempt.php?attempt=104&cmid=15",
+          "visibility_state": "visible",
+          "has_focus": true
+        },
+        "metadata": {
+          "action": "paste_detected",
+          "question_id": "q4",
+          "question_type": "essay",
+          "pasted_length": 348,
+          "word_count": 52,
+          "pasted_text": "الصلح لغة هو قطع النزاع، واصطلاحاً هو عقد تنتهي به الخصومة بين الطرفين بالتراضي. وأركانه في الشريعة الإسلامية هي: العاقدان، والصيغة (الإيجاب والقبول)، والمصالح عنه، والمصالح عليه. وحكمه الجواز لما ورد في السنة النبوية الشريفة الصلح جائز بين المسلمين إلا صلحاً أحل حراماً أو حرّم حلالاً.",
+          "time_since_tab_return_ms": 2284
+        }
+      }
+    },
+    {
+      "scenario": "4. Security Violation: DevTools Shortcut Blocked (محاولة فحص كود الصفحة أو فتح أدوات المطورين)",
+      "description": "يلتقط قيام الطالب بالضغط على أزرار مثل F12 أو Ctrl+Shift+I أو أدوات أخذ لقطات الشاشة.",
+      "payload": {
+        "schema_version": "1.0",
+        "event_id": "em_evt_cc890123ef5612",
+        "session_id": "sess_haitham_quiz1_66d4181a",
+        "sequence_number": 31,
+        "event_type": "devtools_shortcut",
+        "timestamp": "2026-09-02T06:19:40.050Z",
+        "elapsed_ms": 434130,
+        "source": {
+          "layer": "browser_side",
+          "component": "moodle_quiz_monitor",
+          "plugin": "quizaccess_exammonitor"
+        },
+        "moodle": {
+          "site_url": "https://moodle.luckydraw.world",
+          "student": {
+            "id": 40,
+            "fullname": "هيثم الغول"
+          },
+          "quiz": {
+            "id": 1,
+            "attempt_id": 104
+          }
+        },
+        "metadata": {
+          "action": "shortcut_blocked",
+          "key": "F12",
+          "code": "F12",
+          "ctrl_key": false,
+          "shift_key": false,
+          "alt_key": false
+        }
+      }
+    },
+    {
+      "scenario": "5. Answer Timing & Cognitive Telemetry (تفاعل الإجابة مع القياس الإدراكي للسرعة)",
+      "description": "يلتقط تسليم أو تغيير إجابة السؤال لحساب نموذج الاستحالة الإدراكية (T_min = T_read + T_think + T_write).",
+      "payload": {
+        "schema_version": "1.0",
+        "event_id": "em_evt_dd76543210aa98",
+        "session_id": "sess_haitham_quiz1_66d4181a",
+        "sequence_number": 35,
+        "event_type": "answer_changed",
+        "timestamp": "2026-09-02T06:20:05.120Z",
+        "elapsed_ms": 459200,
+        "source": {
+          "layer": "browser_side",
+          "component": "moodle_quiz_monitor",
+          "plugin": "quizaccess_exammonitor"
+        },
+        "moodle": {
+          "site_url": "https://moodle.luckydraw.world",
+          "student": {
+            "id": 40,
+            "fullname": "هيثم الغول"
+          },
+          "quiz": {
+            "id": 1,
+            "attempt_id": 104
+          }
+        },
+        "metadata": {
+          "question_id": "q4",
+          "question_type": "essay",
+          "time_spent_on_question_sec": 3.8,
+          "answer_char_count": 348,
+          "answer_word_count": 52,
+          "answer_text": "الصلح لغة هو قطع النزاع، واصطلاحاً هو عقد تنتهي به الخصومة بين الطرفين بالتراضي. وأركانه في الشريعة الإسلامية هي: العاقدان، والصيغة (الإيجاب والقبول)..."
+        }
+      }
+    },
+    {
+      "scenario": "6. Telemetry Batch Envelope (الدفعة المجمعة المرسلة عبر HTTP POST /telemetry)",
+      "description": "الشكل الكامل للطلب المتعدد الذي يرسله متصفح الطالب دفعة واحدة إلى خادم المنصة.",
+      "payload": {
+        "secret": "em_sec_915a77c381d09e",
+        "events": [
+          {
+            "schema_version": "1.0",
+            "event_id": "em_evt_001",
+            "session_id": "sess_haitham_quiz1_66d4181a",
+            "sequence_number": 41,
+            "event_type": "tab_hidden",
+            "timestamp": "2026-09-02T06:21:10.000Z",
+            "elapsed_ms": 524080,
+            "moodle": { "student": { "id": 40 }, "quiz": { "id": 1 } },
+            "metadata": { "reason": "user_switched_window" }
+          },
+          {
+            "schema_version": "1.0",
+            "event_id": "em_evt_002",
+            "session_id": "sess_haitham_quiz1_66d4181a",
+            "sequence_number": 42,
+            "event_type": "tab_hidden_duration",
+            "timestamp": "2026-09-02T06:21:28.500Z",
+            "elapsed_ms": 542580,
+            "moodle": { "student": { "id": 40 }, "quiz": { "id": 1 } },
+            "metadata": { "duration_ms": 18500 }
+          },
+          {
+            "schema_version": "1.0",
+            "event_id": "em_evt_003",
+            "session_id": "sess_haitham_quiz1_66d4181a",
+            "sequence_number": 43,
+            "event_type": "paste",
+            "timestamp": "2026-09-02T06:21:30.120Z",
+            "elapsed_ms": 544200,
+            "moodle": { "student": { "id": 40 }, "quiz": { "id": 1 } },
+            "metadata": {
+              "action": "paste_detected",
+              "question_id": "q5",
+              "pasted_length": 210
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -53,7 +53,7 @@ final class TeacherActionController
         if ($exam === null) {
             Response::error('الامتحان غير موجود', 404);
         }
-        if (!Auth::teacherOwnsExam($accountId, $teacherId, $exam)) {
+        if (!Auth::isOwner() && !Auth::isCustomer() && !Auth::teacherOwnsExam($accountId, $teacherId, $exam)) {
             Response::error('ليس لديك صلاحية على هذا الامتحان', 403);
         }
         return $exam;
