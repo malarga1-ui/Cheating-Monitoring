@@ -586,4 +586,154 @@ final class TeacherActionController
 
         Response::ok(['actions' => $actions]);
     }
+
+    /**
+     * GET /api/teacher/actions/history
+     * Returns all actions dispatched by this teacher, optionally filtered by exam_id.
+     */
+    public static function history(): void
+    {
+        self::ensureTables();
+        Auth::requireTeacher();
+        $accountId = Auth::accountId();
+        $teacherId = Auth::teacherId();
+        $examId = (int)($_GET['exam_id'] ?? 0);
+
+        try {
+            $params = [$accountId];
+            $where = 'ta.account_id = ?';
+
+            if ($examId > 0) {
+                $where .= ' AND (ta.exam_id = ? OR ta.exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?))';
+                $params[] = $examId;
+                $params[] = $examId;
+            }
+
+            $actions = Database::fetchAll(
+                "SELECT ta.*,
+                        COALESCE(st.fullname, CONCAT('طالب #', ta.student_id)) AS student_name,
+                        COALESCE(st.username, CONCAT('user_', ta.student_id))   AS student_username,
+                        COALESCE(e.name, CONCAT('امتحان #', ta.exam_id))        AS exam_name,
+                        COALESCE(t.fullname, CONCAT('مدرس #', ta.teacher_id))   AS teacher_name
+                 FROM teacher_actions ta
+                 LEFT JOIN students st ON (st.id = ta.student_id OR st.moodle_user_id = ta.student_id) AND (st.account_id = ta.account_id OR st.account_id = 0)
+                 LEFT JOIN exams e ON (e.id = ta.exam_id OR e.moodle_quiz_id = ta.exam_id)
+                 LEFT JOIN teachers t ON (t.moodle_teacher_id = ta.teacher_id OR t.id = ta.teacher_id) AND (t.account_id = ta.account_id OR t.account_id = 0)
+                 WHERE $where
+                 ORDER BY ta.id DESC
+                 LIMIT 100",
+                $params
+            );
+
+            // Compute statistics
+            $stats = [
+                'total'        => count($actions),
+                'pending'      => 0,
+                'delivered'    => 0,
+                'acknowledged' => 0,
+                'active_locks' => 0,
+            ];
+
+            foreach ($actions as $act) {
+                $status = $act['status'] ?? 'pending';
+                if (isset($stats[$status])) {
+                    $stats[$status]++;
+                }
+                if ($act['action_type'] === 'lock_exam' && in_array($status, ['pending', 'delivered'])) {
+                    $stats['active_locks']++;
+                }
+            }
+
+            Response::ok([
+                'actions' => $actions,
+                'stats'   => $stats,
+            ]);
+        } catch (\Throwable $e) {
+            error_log('[TeacherActionController::history] ' . $e->getMessage());
+            Response::ok(['actions' => [], 'stats' => ['total' => 0, 'pending' => 0, 'delivered' => 0, 'acknowledged' => 0, 'active_locks' => 0]]);
+        }
+    }
+
+    /**
+     * POST /api/teacher/actions/broadcast
+     * Dispatches a message or action to ALL active students in an exam.
+     * Body: { exam_id, message, action_type }
+     */
+    public static function broadcast(): void
+    {
+        self::ensureTables();
+        Auth::requireTeacher();
+        Auth::guardStateChangingRequest();
+        $accountId = Auth::accountId();
+        $teacherId = Auth::teacherId();
+        $body = em_body_json() ?? [];
+
+        $examId = (int)($body['exam_id'] ?? 0);
+        $message = trim((string)($body['message'] ?? ''));
+        $actionType = (string)($body['action_type'] ?? 'send_message');
+
+        if (!in_array($actionType, ['send_message', 'lock_exam', 'reduce_time'], true)) {
+            $actionType = 'send_message';
+        }
+
+        if ($actionType === 'send_message' && $message === '') {
+            Response::error('نص الرسالة مطلوب للبث العام', 422);
+        }
+
+        $exam = self::requireExamOwnership($accountId, $teacherId, $examId);
+        $internalExamId = (int)$exam['id'];
+        $moodleQuizId = (int)$exam['moodle_quiz_id'];
+
+        // Find all active students currently or recently in this exam
+        $students = Database::fetchAll(
+            'SELECT DISTINCT student_id FROM session_summaries
+             WHERE (exam_id = ? OR exam_id = ?) AND student_id > 0',
+            [$internalExamId, $moodleQuizId]
+        );
+
+        if (empty($students)) {
+            // Also check events table
+            $students = Database::fetchAll(
+                'SELECT DISTINCT moodle_user_id AS student_id FROM events
+                 WHERE (moodle_quiz_id = ? OR moodle_quiz_id = ?) AND moodle_user_id > 0
+                 AND event_time >= NOW() - INTERVAL 2 HOUR',
+                [$internalExamId, $moodleQuizId]
+            );
+        }
+
+        $insertedCount = 0;
+        $minutes = (int)($body['minutes'] ?? 5);
+
+        foreach ($students as $st) {
+            $sid = (int)$st['student_id'];
+            if ($sid <= 0) continue;
+
+            Database::execute(
+                'INSERT INTO teacher_actions
+                    (account_id, exam_id, session_summary_id, student_id, teacher_id, action_type, message, minutes_to_reduce, status, created_at)
+                 VALUES (?, ?, 0, ?, ?, ?, ?, ?, "pending", NOW())',
+                [
+                    $accountId,
+                    $internalExamId,
+                    $sid,
+                    $teacherId,
+                    $actionType,
+                    $actionType === 'send_message' ? $message : null,
+                    $actionType === 'reduce_time' ? $minutes : null,
+                ]
+            );
+            $actionId = (int)Database::scalar('SELECT LAST_INSERT_ID()');
+            Database::execute(
+                'INSERT INTO teacher_action_log (action_id, event_type, created_at) VALUES (?, "created", NOW())',
+                [$actionId]
+            );
+            $insertedCount++;
+        }
+
+        Response::ok([
+            'ok'             => true,
+            'broadcast_count'=> $insertedCount,
+            'message'        => "تم إرسال البث بنجاح إلى ($insertedCount) طالب في الامتحان",
+        ]);
+    }
 }

@@ -105,7 +105,15 @@ $router->post('/api/teacher/actions/message', [TeacherActionController::class, '
 $router->post('/api/teacher/actions/lock', [TeacherActionController::class, 'lockExam']);
 $router->post('/api/teacher/actions/unlock', [TeacherActionController::class, 'unlockExam']);
 $router->post('/api/teacher/actions/reduce-time', [TeacherActionController::class, 'reduceTime']);
+$router->get('/api/teacher/actions/history', [TeacherActionController::class, 'history']);
+$router->post('/api/teacher/actions/broadcast', [TeacherActionController::class, 'broadcast']);
 $router->get('/api/teacher/actions/{examId}/log', [TeacherActionController::class, 'log']);
+
+// ---- Teacher risk formula & audit reports ------------------------------------
+$router->get('/api/teacher/risk-formula', [TeacherPortalController::class, 'getRiskFormula']);
+$router->post('/api/teacher/risk-formula', [TeacherPortalController::class, 'updateRiskFormula']);
+$router->post('/api/teacher/risk-formula/recompute', [TeacherPortalController::class, 'recomputeRiskFormula']);
+$router->get('/api/teacher/reports/exam/{id}', [TeacherPortalController::class, 'examAuditReport']);
 
 // ---- SaaS accounts ---------------------------------------------------------
 $router->post('/api/accounts/register', [AccountController::class, 'register']);

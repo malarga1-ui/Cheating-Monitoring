@@ -1905,4 +1905,249 @@ final class TeacherPortalController
         });
         Response::ok(['message' => 'تم حذف الطالب وبياناته بنجاح']);
     }
+
+    /**
+     * GET /api/teacher/risk-formula
+     * Retrieves the cheating formula weights, indicators, categories, and presets.
+     */
+    public static function getRiskFormula(): void
+    {
+        Auth::requireTeacher();
+
+        $rows = Database::fetchAll(
+            'SELECT id, indicator_key, label_ar, weight_percent, enabled, description, sort_order, category
+             FROM risk_indicators ORDER BY sort_order ASC, id ASC'
+        );
+
+        $catTotals = ['behavioral' => 0.0, 'network' => 0.0, 'ai' => 0.0, 'similarity' => 0.0];
+        $totalWeight = 0.0;
+        foreach ($rows as $r) {
+            if ((int)$r['enabled'] === 1) {
+                $w = (float)$r['weight_percent'];
+                $cat = $r['category'] ?? 'behavioral';
+                if (isset($catTotals[$cat])) {
+                    $catTotals[$cat] += $w;
+                }
+                $totalWeight += $w;
+            }
+        }
+
+        $presets = [
+            [
+                'key'         => 'standard',
+                'name'        => 'المعياري (الأطروحة)',
+                'description' => 'المعادلة الأكاديمية القياسية الموثقة في أطروحة الماجستير (NIST SP 800-30).',
+                'weights'     => ['behavioral' => 50, 'ai' => 20, 'similarity' => 15, 'network' => 15],
+            ],
+            [
+                'key'         => 'essay',
+                'name'        => 'امتحان مقالي وإنشائي',
+                'description' => 'تركيز مضاعف على كشف نصوص الذكاء الاصطناعي والتواطؤ وتشابه الإجابات.',
+                'weights'     => ['behavioral' => 25, 'ai' => 35, 'similarity' => 30, 'network' => 10],
+            ],
+            [
+                'key'         => 'mcq',
+                'name'        => 'امتحان خيارات وسرعة',
+                'description' => 'تركيز على السلوك ومغادرة التبويب والسرعة الإدراكية الخارقة ونوافذ المتصفح.',
+                'weights'     => ['behavioral' => 60, 'ai' => 10, 'similarity' => 10, 'network' => 20],
+            ],
+            [
+                'key'         => 'openbook',
+                'name'        => 'امتحان كتاب مفتوح',
+                'description' => 'إيقاف مؤشر مغادرة الصفحة والتركيز التام على التواطؤ ومشاركة الإجابات بين الطلاب.',
+                'weights'     => ['behavioral' => 10, 'ai' => 35, 'similarity' => 45, 'network' => 10],
+            ],
+            [
+                'key'         => 'strict',
+                'name'        => 'مراقبة أمنية مشددة',
+                'description' => 'حساسية متساوية ومرتفعة لكافة نواقل السلوك والشبكة والذكاء الاصطناعي.',
+                'weights'     => ['behavioral' => 40, 'ai' => 20, 'similarity' => 20, 'network' => 20],
+            ],
+        ];
+
+        Response::ok([
+            'indicators'      => $rows,
+            'category_totals' => $catTotals,
+            'total_weight'    => round($totalWeight, 2),
+            'presets'         => $presets,
+            'levels'          => RiskEngine::LEVELS,
+        ]);
+    }
+
+    /**
+     * POST /api/teacher/risk-formula
+     * Updates indicator weights or applies a preset.
+     */
+    public static function updateRiskFormula(): void
+    {
+        Auth::requireTeacher();
+        Auth::guardStateChangingRequest();
+        $body = em_body_json() ?? [];
+
+        if (isset($body['indicators']) && is_array($body['indicators'])) {
+            foreach ($body['indicators'] as $ind) {
+                $id = (int)($ind['id'] ?? 0);
+                if ($id <= 0) continue;
+
+                $weight = max(0, min(100, (float)($ind['weight_percent'] ?? 0)));
+                $enabled = isset($ind['enabled']) ? ((bool)$ind['enabled'] ? 1 : 0) : 1;
+
+                Database::execute(
+                    'UPDATE risk_indicators SET weight_percent = ?, enabled = ? WHERE id = ?',
+                    [$weight, $enabled, $id]
+                );
+            }
+            RiskEngine::flushCache();
+            Response::ok(['ok' => true, 'message' => 'تم حفظ أوزان معادلة الغش بنجاح']);
+            return;
+        }
+
+        if (isset($body['category_weights']) && is_array($body['category_weights'])) {
+            $weights = $body['category_weights'];
+            foreach (['behavioral', 'network', 'ai', 'similarity'] as $cat) {
+                if (isset($weights[$cat])) {
+                    $catWeight = max(0, min(100, (float)$weights[$cat]));
+                    $count = (int)Database::scalar('SELECT COUNT(*) FROM risk_indicators WHERE category = ?', [$cat]);
+                    if ($count > 0) {
+                        $perInd = round($catWeight / $count, 2);
+                        Database::execute(
+                            'UPDATE risk_indicators SET weight_percent = ?, enabled = 1 WHERE category = ?',
+                            [$perInd, $cat]
+                        );
+                    }
+                }
+            }
+            RiskEngine::flushCache();
+            Response::ok(['ok' => true, 'message' => 'تم تطبيق أوزان الفئات بنجاح']);
+            return;
+        }
+
+        Response::error('بيانات التحديث غير صالحة', 422);
+    }
+
+    /**
+     * POST /api/teacher/risk-formula/recompute
+     * Recomputes risk scores across sessions using the updated formula.
+     */
+    public static function recomputeRiskFormula(): void
+    {
+        Auth::requireTeacher();
+        Auth::guardStateChangingRequest();
+        $body = em_body_json() ?? [];
+        $accountId = Auth::accountId();
+        $examId = (int)($body['exam_id'] ?? 0);
+
+        RiskEngine::flushCache();
+
+        $where = 'account_id = ?';
+        $params = [$accountId];
+        if ($examId > 0) {
+            $where .= ' AND (exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?))';
+            $params[] = $examId;
+            $params[] = $examId;
+        }
+
+        $sessions = Database::fetchAll("SELECT * FROM session_summaries WHERE $where", $params);
+        $updated = 0;
+
+        foreach ($sessions as $ss) {
+            $b = (float)($ss['behavioral_risk_score'] ?? 0);
+            $n = (float)($ss['same_ip_risk_score'] ?? 0);
+            $a = (float)($ss['ai_suspect_score'] ?? 0);
+            $s = (float)($ss['similarity_max_score'] ?? 0);
+
+            // Recompute unified risk using RiskEngine
+            $newScore = (int)round(RiskEngine::combineComponents($b / 100.0, $a / 100.0, $s / 100.0, $n / 100.0));
+            $newScore = max(0, min(100, $newScore));
+            $newLevel = RiskEngine::levelFor($newScore);
+
+            Database::execute(
+                'UPDATE session_summaries SET risk_score = ?, risk_level = ?, updated_at = NOW() WHERE id = ?',
+                [$newScore, $newLevel, (int)$ss['id']]
+            );
+            $updated++;
+        }
+
+        Response::ok([
+            'ok'      => true,
+            'updated' => $updated,
+            'message' => "تمت إعادة حساب درجات الغش لـ ($updated) جلسة بنجاح وفق المعادلة الجديدة",
+        ]);
+    }
+
+    /**
+     * GET /api/teacher/reports/exam/{id}
+     * Full academic audit and forensic dossier for an exam.
+     */
+    public static function examAuditReport(int $examId): void
+    {
+        Auth::requireTeacher();
+        $accountId = Auth::accountId();
+        $teacherId = Auth::teacherId();
+
+        $exam = Database::fetchOne(
+            'SELECT e.*, c.name AS course_name FROM exams e
+             LEFT JOIN courses c ON (c.id = e.course_id OR c.moodle_course_id = e.moodle_course_id)
+             WHERE (e.id = ? OR e.moodle_quiz_id = ?) AND (e.account_id = ? OR e.account_id = 0)
+             LIMIT 1',
+            [$examId, $examId, $accountId]
+        );
+
+        if (!$exam) {
+            Response::error('الامتحان غير موجود', 404);
+        }
+
+        $internalExamId = (int)$exam['id'];
+        $moodleQuizId = (int)$exam['moodle_quiz_id'];
+
+        // Exam summary statistics
+        $stats = Database::fetchOne(
+            "SELECT COUNT(*) AS total_students,
+                    COUNT(CASE WHEN risk_score >= 80 THEN 1 END) AS high_critical_count,
+                    COUNT(CASE WHEN risk_score >= 21 AND risk_score < 80 THEN 1 END) AS medium_count,
+                    COUNT(CASE WHEN risk_score < 21 THEN 1 END) AS low_safe_count,
+                    ROUND(AVG(risk_score), 1) AS avg_risk,
+                    ROUND(AVG(behavioral_risk_score), 1) AS avg_behavioral,
+                    ROUND(AVG(ai_suspect_score), 1) AS avg_ai,
+                    ROUND(AVG(similarity_max_score), 1) AS avg_similarity,
+                    COUNT(CASE WHEN same_ip_student_count > 0 THEN 1 END) AS ip_cluster_count
+             FROM session_summaries
+             WHERE (exam_id = ? OR exam_id = ?) AND (account_id = ? OR account_id = 0)",
+            [$internalExamId, $moodleQuizId, $accountId]
+        );
+
+        // Student roster ordered by risk
+        $students = Database::fetchAll(
+            "SELECT ss.*,
+                    COALESCE(s.fullname, CONCAT('طالب #', ss.student_id)) AS fullname,
+                    COALESCE(s.username, CONCAT('user_', ss.student_id)) AS username,
+                    COALESCE(s.moodle_user_id, ss.student_id) AS moodle_user_id
+             FROM session_summaries ss
+             LEFT JOIN students s ON (s.id = ss.student_id OR s.moodle_user_id = ss.student_id) AND (s.account_id = ss.account_id OR s.account_id = 0)
+             WHERE (ss.exam_id = ? OR ss.exam_id = ?) AND (ss.account_id = ? OR ss.account_id = 0)
+             ORDER BY ss.risk_score DESC, ss.id DESC",
+            [$internalExamId, $moodleQuizId, $accountId]
+        );
+
+        // Dispatched teacher actions for this exam
+        $actions = Database::fetchAll(
+            "SELECT ta.*,
+                    COALESCE(st.fullname, CONCAT('طالب #', ta.student_id)) AS student_name,
+                    COALESCE(t.fullname, CONCAT('مدرس #', ta.teacher_id)) AS teacher_name
+             FROM teacher_actions ta
+             LEFT JOIN students st ON (st.id = ta.student_id OR st.moodle_user_id = ta.student_id)
+             LEFT JOIN teachers t ON (t.moodle_teacher_id = ta.teacher_id OR t.id = ta.teacher_id)
+             WHERE (ta.exam_id = ? OR ta.exam_id = ?) AND (ta.account_id = ? OR ta.account_id = 0)
+             ORDER BY ta.id DESC",
+            [$internalExamId, $moodleQuizId, $accountId]
+        );
+
+        Response::ok([
+            'exam'     => $exam,
+            'stats'    => $stats,
+            'students' => $students,
+            'actions'  => $actions,
+            'generated_at' => gmdate('Y-m-d H:i:s') . ' UTC',
+        ]);
+    }
 }

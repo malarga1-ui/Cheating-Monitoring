@@ -10,6 +10,9 @@ import NetworkAnalysis from './NetworkAnalysis'
 import SimilarityDetection from './SimilarityDetection'
 import MultiDevice from './MultiDevice'
 import AppTour from '../components/AppTour'
+import TeacherActionCenter from './TeacherActionCenter'
+import TeacherRiskFormula from './TeacherRiskFormula'
+import TeacherAuditReports from './TeacherAuditReports'
 
 function Spinner() {
   return (
@@ -160,6 +163,42 @@ function Header({ courses = [], activeExamsCount = 0 }) {
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
               </span>
             )}
+          </Link>
+
+          <Link
+            to="/teacher/portal/actions"
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-extrabold transition-all ${
+              p.includes('/teacher/portal/actions')
+                ? 'bg-brand-600 text-white shadow-md shadow-brand-600/20'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            <span>⚡</span>
+            <span>مركز إجراءات المدرس</span>
+          </Link>
+
+          <Link
+            to="/teacher/portal/formula"
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-extrabold transition-all ${
+              p.includes('/teacher/portal/formula')
+                ? 'bg-brand-600 text-white shadow-md shadow-brand-600/20'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            <span>⚖️</span>
+            <span>معادلة الغش ومعايير التقييم</span>
+          </Link>
+
+          <Link
+            to="/teacher/portal/reports"
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-extrabold transition-all ${
+              p.includes('/teacher/portal/reports')
+                ? 'bg-brand-600 text-white shadow-md shadow-brand-600/20'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            <span>📑</span>
+            <span>سجل الأدلة والتقارير</span>
           </Link>
 
           <Link
@@ -1376,6 +1415,9 @@ export default function TeacherPortal() {
         <Routes>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<LiveExamDashboard activeExams={activeExams} />} />
+          <Route path="actions" element={<TeacherActionCenter />} />
+          <Route path="formula" element={<TeacherRiskFormula />} />
+          <Route path="reports" element={<TeacherAuditReports />} />
           <Route path="courses" element={<CoursesList courses={courses} />} />
           <Route path="c/:courseId/*" element={<CourseWorkspace courses={courses} />} />
           
