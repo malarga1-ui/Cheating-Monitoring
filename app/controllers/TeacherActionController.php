@@ -59,6 +59,27 @@ final class TeacherActionController
         return $exam;
     }
 
+    /** Automatically resolve exam ID if not provided explicitly */
+    private static function resolveExamId(int $accountId, int $examId, int $studentId): int
+    {
+        if ($examId > 0) {
+            return $examId;
+        }
+        if ($studentId > 0) {
+            $found = (int)Database::scalar(
+                'SELECT exam_id FROM session_summaries WHERE (student_id = ? OR student_id IN (SELECT id FROM students WHERE moodle_user_id = ?)) ORDER BY last_event_at DESC LIMIT 1',
+                [$studentId, $studentId]
+            );
+            if ($found > 0) {
+                return $found;
+            }
+        }
+        return (int)Database::scalar(
+            'SELECT e.id FROM exams e JOIN courses c ON c.moodle_course_id = e.moodle_course_id WHERE (c.account_id = ? OR c.account_id = 0) ORDER BY e.id DESC LIMIT 1',
+            [$accountId]
+        );
+    }
+
     /**
      * POST /api/teacher/actions/message
      * Body: { exam_id, session_summary_id, student_id, message }
@@ -72,13 +93,13 @@ final class TeacherActionController
         $teacherId = Auth::teacherId();
         $body = em_body_json() ?? [];
 
-        $examId = (int)($body['exam_id'] ?? 0);
         $studentId = (int)($body['student_id'] ?? ($body['studentId'] ?? ($body['id'] ?? 0)));
+        $examId = self::resolveExamId($accountId, (int)($body['exam_id'] ?? 0), $studentId);
         $sessionId = (int)($body['session_summary_id'] ?? ($body['sessionId'] ?? 0));
         $message = trim((string)($body['message'] ?? ''));
 
-        if ($examId <= 0 || $studentId <= 0 || $message === '') {
-            Response::error('رقم الامتحان ورقم الطالب ونص الرسالة مطلوبان', 422);
+        if ($studentId <= 0 || $message === '') {
+            Response::error('رقم الطالب ونص الرسالة مطلوبان', 422);
         }
         if (mb_strlen($message) > 500) {
             Response::error('الرسالة لا يجب أن تتجاوز 500 حرف', 422);
@@ -124,12 +145,12 @@ final class TeacherActionController
         $teacherId = Auth::teacherId();
         $body = em_body_json() ?? [];
 
-        $examId = (int)($body['exam_id'] ?? 0);
         $studentId = (int)($body['student_id'] ?? ($body['studentId'] ?? ($body['id'] ?? 0)));
+        $examId = self::resolveExamId($accountId, (int)($body['exam_id'] ?? 0), $studentId);
         $sessionId = (int)($body['session_summary_id'] ?? ($body['sessionId'] ?? 0));
 
-        if ($examId <= 0 || $studentId <= 0) {
-            Response::error('رقم الامتحان ورقم الطالب مطلوبان', 422);
+        if ($studentId <= 0) {
+            Response::error('رقم الطالب مطلوب', 422);
         }
 
         $exam = self::requireExamOwnership($accountId, $teacherId, $examId);
@@ -182,13 +203,13 @@ final class TeacherActionController
         $teacherId = Auth::teacherId();
         $body = em_body_json() ?? [];
 
-        $examId = (int)($body['exam_id'] ?? 0);
         $studentId = (int)($body['student_id'] ?? ($body['studentId'] ?? ($body['id'] ?? 0)));
+        $examId = self::resolveExamId($accountId, (int)($body['exam_id'] ?? 0), $studentId);
         $sessionId = (int)($body['session_summary_id'] ?? ($body['sessionId'] ?? 0));
         $minutes = (int)($body['minutes'] ?? 0);
 
-        if ($examId <= 0 || $studentId <= 0 || $minutes <= 0) {
-            Response::error('رقم الامتحان ورقم الطالب وعدد الدقائق مطلوبون', 422);
+        if ($studentId <= 0 || $minutes <= 0) {
+            Response::error('رقم الطالب وعدد الدقائق مطلوبان', 422);
         }
         if ($minutes > 60) {
             Response::error('لا يمكن تقليص أكثر من 60 دقيقة في المرة الواحدة', 422);
@@ -234,12 +255,12 @@ final class TeacherActionController
         $teacherId = Auth::teacherId();
         $body = em_body_json() ?? [];
 
-        $examId = (int)($body['exam_id'] ?? 0);
         $studentId = (int)($body['student_id'] ?? ($body['studentId'] ?? ($body['id'] ?? 0)));
+        $examId = self::resolveExamId($accountId, (int)($body['exam_id'] ?? 0), $studentId);
         $sessionId = (int)($body['session_summary_id'] ?? ($body['sessionId'] ?? 0));
 
-        if ($examId <= 0 || $studentId <= 0) {
-            Response::error('رقم الامتحان ورقم الطالب مطلوبان', 422);
+        if ($studentId <= 0) {
+            Response::error('رقم الطالب مطلوب', 422);
         }
 
         $exam = self::requireExamOwnership($accountId, $teacherId, $examId);
@@ -398,20 +419,30 @@ final class TeacherActionController
                 ];
             }
 
-            // 2. Check if current active session is locked (based on latest lock/unlock action)
+            // 2. Check if current active session or student is locked
             $isLocked = false;
+            $lockParams = [$accountId];
+            $lockClauses = [];
             if ($sessionId !== '') {
+                $lockClauses[] = '(session_summary_id > 0 AND (session_summary_id = ? OR session_summary_id IN (SELECT id FROM session_summaries WHERE session_id = ?)))';
+                $lockParams[] = is_numeric($sessionId) ? (int)$sessionId : 0;
+                $lockParams[] = $sessionId;
+            }
+            if ($studentId > 0) {
+                $lockClauses[] = '(student_id = ? OR student_id IN (SELECT id FROM students WHERE moodle_user_id = ?) OR student_id IN (SELECT moodle_user_id FROM students WHERE id = ?))';
+                $lockParams[] = $studentId;
+                $lockParams[] = $studentId;
+                $lockParams[] = $studentId;
+            }
+            if (!empty($lockClauses)) {
+                $lockWhere = "account_id = ? AND action_type IN ('lock_exam', 'unlock_exam') AND status IN ('pending', 'delivered') AND (" . implode(' OR ', $lockClauses) . ")";
                 $latestLock = Database::fetchOne(
-                    "SELECT action_type FROM teacher_actions
-                      WHERE account_id = ?
-                        AND action_type IN ('lock_exam', 'unlock_exam')
-                        AND status IN ('pending', 'delivered')
-                        AND (session_summary_id = ? OR session_summary_id IN (SELECT id FROM session_summaries WHERE session_id = ?))
-                      ORDER BY id DESC LIMIT 1",
-                    [$accountId, is_numeric($sessionId) ? (int)$sessionId : 0, $sessionId]
+                    "SELECT action_type FROM teacher_actions WHERE $lockWhere ORDER BY id DESC LIMIT 1",
+                    $lockParams
                 );
                 $isLocked = ($latestLock && $latestLock['action_type'] === 'lock_exam');
             }
+
             // If any action in current pending batch is lock_exam or unlock_exam
             foreach ($result as $act) {
                 if ($act['action'] === 'lock_exam') {
@@ -421,15 +452,26 @@ final class TeacherActionController
                 }
             }
 
-            // 3. Cumulative reduced minutes for current active session
+            // 3. Cumulative reduced minutes for current student or session
             $totalReducedMinutes = 0;
+            $redParams = [$accountId];
+            $redClauses = [];
             if ($sessionId !== '') {
+                $redClauses[] = '(session_summary_id > 0 AND (session_summary_id = ? OR session_summary_id IN (SELECT id FROM session_summaries WHERE session_id = ?)))';
+                $redParams[] = is_numeric($sessionId) ? (int)$sessionId : 0;
+                $redParams[] = $sessionId;
+            }
+            if ($studentId > 0) {
+                $redClauses[] = '(student_id = ? OR student_id IN (SELECT id FROM students WHERE moodle_user_id = ?) OR student_id IN (SELECT moodle_user_id FROM students WHERE id = ?))';
+                $redParams[] = $studentId;
+                $redParams[] = $studentId;
+                $redParams[] = $studentId;
+            }
+            if (!empty($redClauses)) {
+                $redWhere = "account_id = ? AND action_type = 'reduce_time' AND (" . implode(' OR ', $redClauses) . ")";
                 $totalReducedMinutes = (int)Database::scalar(
-                    "SELECT COALESCE(SUM(minutes_to_reduce), 0) FROM teacher_actions
-                      WHERE account_id = ?
-                        AND action_type = 'reduce_time'
-                        AND (session_summary_id = ? OR session_summary_id IN (SELECT id FROM session_summaries WHERE session_id = ?))",
-                    [$accountId, is_numeric($sessionId) ? (int)$sessionId : 0, $sessionId]
+                    "SELECT COALESCE(SUM(minutes_to_reduce), 0) FROM teacher_actions WHERE $redWhere",
+                    $redParams
                 );
             }
 

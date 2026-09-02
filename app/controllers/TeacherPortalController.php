@@ -524,7 +524,8 @@ final class TeacherPortalController
                     SUM(ss.event_count) AS event_count,
                     COALESCE(MAX(s.fullname), CONCAT('طالب #', ss.student_id)) AS fullname,
                     COALESCE(MAX(s.username), '') AS username,
-                    COALESCE(MAX(e.name), 'اختبار أسئلة دينية عامة') AS exam_name
+                    COALESCE(MAX(e.name), 'اختبار أسئلة دينية عامة') AS exam_name,
+                    COALESCE(MAX(ss.exam_id), 0) AS exam_id
                FROM session_summaries ss
                LEFT JOIN students s ON (s.id = ss.student_id OR s.moodle_user_id = ss.student_id)
                LEFT JOIN exams e ON (e.id = ss.exam_id OR e.moodle_quiz_id = ss.exam_id)
@@ -568,6 +569,7 @@ final class TeacherPortalController
                 'fullname'      => $r['fullname'],
                 'username'      => $r['username'],
                 'exam_name'     => $r['exam_name'],
+                'exam_id'       => (int)$r['exam_id'],
                 'risk_score'    => (int)$r['risk_score'],
                 'risk_level'    => $r['risk_level'],
                 'tab_hidden'    => (int)$r['tab_hidden_count'],
