@@ -13,6 +13,8 @@ export default function TeacherAuditReports() {
   const [search, setSearch] = useState('')
   const [filterLevel, setFilterLevel] = useState('all')
 
+  const [autoRefresh, setAutoRefresh] = useState(true)
+
   useEffect(() => {
     api.get('/api/teacher/exams')
       .then((data) => {
@@ -27,13 +29,56 @@ export default function TeacherAuditReports() {
 
   useEffect(() => {
     if (!selectedExamId) return
-    setLoading(true)
-    setError('')
-    api.get(`/api/teacher/reports/exam/${selectedExamId}`)
-      .then((data) => setReportData(data))
-      .catch((e) => setError(e.message || 'فشل تحميل تقرير الامتحان'))
-      .finally(() => setLoading(false))
-  }, [selectedExamId])
+    let active = true
+
+    function fetchReport(showSpinner = false) {
+      if (showSpinner) setLoading(true)
+      api.get(`/api/teacher/reports/exam/${selectedExamId}`)
+        .then((data) => {
+          if (active) {
+            setReportData(data)
+            setError('')
+          }
+        })
+        .catch((e) => {
+          if (active && !reportData) setError(e.message || 'فشل تحميل تقرير الامتحان')
+        })
+        .finally(() => {
+          if (active && showSpinner) setLoading(false)
+        })
+    }
+
+    fetchReport(true)
+
+    let timer = null
+    if (autoRefresh) {
+      timer = setInterval(() => fetchReport(false), 4000)
+    }
+
+    return () => {
+      active = false
+      if (timer) clearInterval(timer)
+    }
+  }, [selectedExamId, autoRefresh])
+
+  const formatDateTime = (dtStr) => {
+    if (!dtStr) return '—'
+    try {
+      const d = new Date(dtStr.replace(' ', 'T'))
+      if (isNaN(d.getTime())) return dtStr
+      return d.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    } catch {
+      return dtStr
+    }
+  }
+
+  const formatDuration = (sec) => {
+    if (!sec || sec <= 0) return '—'
+    const m = Math.floor(sec / 60)
+    const s = sec % 60
+    if (m === 0) return `${s} ث`
+    return `${m} د ${s > 0 ? `${s}ث` : ''}`
+  }
 
   const exportCSV = () => {
     if (!reportData || !reportData.students) return
@@ -41,6 +86,10 @@ export default function TeacherAuditReports() {
       'Student ID',
       'Full Name',
       'Username',
+      'Start Time',
+      'End Time',
+      'Duration (Seconds)',
+      'Duration (Formatted)',
       'Risk Score (%)',
       'Risk Level',
       'Behavioral (B %)',
@@ -57,6 +106,10 @@ export default function TeacherAuditReports() {
       s.student_id,
       `"${s.fullname}"`,
       s.username,
+      s.start_time || '',
+      s.end_time || '',
+      s.duration_seconds || 0,
+      `"${formatDuration(s.duration_seconds)}"`,
       s.risk_score,
       s.risk_level,
       s.behavioral_risk_score,
@@ -202,7 +255,7 @@ export default function TeacherAuditReports() {
 
           {/* Filter and Search Bar */}
           <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <input
                 type="text"
                 value={search}
@@ -222,8 +275,22 @@ export default function TeacherAuditReports() {
                 <option value="low">منخفض (Low)</option>
                 <option value="safe">آمن (Safe)</option>
               </select>
+              <button
+                onClick={() => setAutoRefresh(!autoRefresh)}
+                className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition-all shadow-sm ${
+                  autoRefresh
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : 'bg-slate-100 text-slate-500 border border-slate-200'
+                }`}
+              >
+                <span className="relative flex h-2 w-2">
+                  {autoRefresh && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />}
+                  <span className={`relative inline-flex h-2 w-2 rounded-full ${autoRefresh ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                </span>
+                {autoRefresh ? 'تحديث لحظي نشط' : 'تحديث يدوي'}
+              </button>
             </div>
-            <span className="text-xs font-bold text-slate-400">عدد الطلاب المعروضين: ({students.length})</span>
+            <span className="text-xs font-bold text-slate-400">عدد الطلاب المسجلين: ({students.length})</span>
           </div>
 
           {/* Student Dossier Table */}
@@ -234,9 +301,12 @@ export default function TeacherAuditReports() {
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50/60 text-slate-600 font-extrabold">
                       <th className="px-4 py-3.5">الطالب</th>
+                      <th className="px-4 py-3.5 text-center">وقت البدء</th>
+                      <th className="px-4 py-3.5 text-center">وقت الانتهاء</th>
+                      <th className="px-4 py-3.5 text-center">المدة المستغرقة</th>
                       <th className="px-4 py-3.5">مستوى الخطر الإجمالي</th>
                       <th className="px-4 py-3.5 text-center">السلوك (B)</th>
-                      <th className="px-4 py-3.5 text-center">الذكاء الاصطناعي (A)</th>
+                      <th className="px-4 py-3.5 text-center">الذكاء (A)</th>
                       <th className="px-4 py-3.5 text-center">التشابه (S)</th>
                       <th className="px-4 py-3.5 text-center">الشبكة (N)</th>
                       <th className="px-4 py-3.5">المؤشرات المسجلة</th>
@@ -244,10 +314,21 @@ export default function TeacherAuditReports() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {students.map((st) => (
-                      <tr key={st.id} className="transition-colors hover:bg-slate-50/60">
+                      <tr key={st.id || st.session_id} className="transition-colors hover:bg-slate-50/60">
                         <td className="px-4 py-3.5">
                           <p className="font-black text-slate-800">{st.fullname}</p>
                           <p className="text-[10px] font-bold text-slate-400">ID: {st.moodle_user_id || st.student_id} | {st.username}</p>
+                        </td>
+                        <td className="px-4 py-3.5 text-center font-bold text-slate-700 whitespace-nowrap" dir="ltr">
+                          {formatDateTime(st.start_time)}
+                        </td>
+                        <td className="px-4 py-3.5 text-center font-bold text-slate-700 whitespace-nowrap" dir="ltr">
+                          {formatDateTime(st.end_time)}
+                        </td>
+                        <td className="px-4 py-3.5 text-center font-bold text-indigo-700 whitespace-nowrap">
+                          <span className="rounded-md bg-indigo-50 px-2 py-1 border border-indigo-100 text-[11px]">
+                            {formatDuration(st.duration_seconds)}
+                          </span>
                         </td>
                         <td className="px-4 py-3.5">
                           {getRiskBadge(st.risk_level, st.risk_score)}

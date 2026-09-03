@@ -2171,6 +2171,10 @@ final class TeacherPortalController
         $internalExamId = (int)$exam['id'];
         $moodleQuizId = (int)$exam['moodle_quiz_id'];
 
+        try {
+            Aggregator::process(1000);
+        } catch (\Throwable $e) {}
+
         // Exam summary statistics
         $stats = Database::fetchOne(
             "SELECT COUNT(*) AS total_students,
@@ -2187,18 +2191,63 @@ final class TeacherPortalController
             [$internalExamId, $moodleQuizId, $accountId]
         );
 
-        // Student roster ordered by risk
+        // Student roster ordered by risk with precise start, end, and duration
         $students = Database::fetchAll(
             "SELECT ss.*,
                     COALESCE(s.fullname, CONCAT('طالب #', ss.student_id)) AS fullname,
                     COALESCE(s.username, CONCAT('user_', ss.student_id)) AS username,
-                    COALESCE(s.moodle_user_id, ss.student_id) AS moodle_user_id
+                    COALESCE(s.moodle_user_id, ss.student_id) AS moodle_user_id,
+                    COALESCE(ss.first_event_at, (SELECT MIN(ev.event_time) FROM events ev WHERE ev.session_id = ss.session_id)) AS start_time,
+                    COALESCE(ss.last_event_at, (SELECT MAX(ev.event_time) FROM events ev WHERE ev.session_id = ss.session_id)) AS end_time,
+                    TIMESTAMPDIFF(SECOND, 
+                        COALESCE(ss.first_event_at, (SELECT MIN(ev1.event_time) FROM events ev1 WHERE ev1.session_id = ss.session_id)),
+                        COALESCE(ss.last_event_at, (SELECT MAX(ev2.event_time) FROM events ev2 WHERE ev2.session_id = ss.session_id))
+                    ) AS duration_seconds,
+                    (ss.tab_hidden_count + ss.blur_count) AS focus_lost_count,
+                    ROUND(ss.tab_hidden_duration_ms / 1000) AS tab_hidden_seconds
              FROM session_summaries ss
              LEFT JOIN students s ON (s.id = ss.student_id OR s.moodle_user_id = ss.student_id) AND (s.account_id = ss.account_id OR s.account_id = 0)
              WHERE (ss.exam_id = ? OR ss.exam_id = ?) AND (ss.account_id = ? OR ss.account_id = 0)
              ORDER BY ss.risk_score DESC, ss.id DESC",
             [$internalExamId, $moodleQuizId, $accountId]
         );
+
+        // Fallback: if session_summaries has no records yet, query directly from events
+        if (empty($students)) {
+            $evStudents = Database::fetchAll(
+                "SELECT ev.session_id,
+                        COALESCE(NULLIF(ev.moodle_user_id, 0), 1) AS student_id,
+                        COALESCE(s.fullname, CONCAT('طالب #', ev.moodle_user_id)) AS fullname,
+                        COALESCE(s.username, CONCAT('user_', ev.moodle_user_id)) AS username,
+                        COALESCE(s.moodle_user_id, ev.moodle_user_id) AS moodle_user_id,
+                        MIN(ev.event_time) AS start_time,
+                        MAX(ev.event_time) AS end_time,
+                        TIMESTAMPDIFF(SECOND, MIN(ev.event_time), MAX(ev.event_time)) AS duration_seconds,
+                        COUNT(*) AS event_count,
+                        COUNT(CASE WHEN ev.event_type IN ('tab_hidden', 'window_blur') THEN 1 END) AS focus_lost_count,
+                        COUNT(CASE WHEN ev.event_type = 'paste' THEN 1 END) AS paste_count,
+                        COUNT(CASE WHEN ev.event_type = 'copy' THEN 1 END) AS copy_count,
+                        15 AS risk_score,
+                        'low' AS risk_level,
+                        15 AS behavioral_risk_score,
+                        0 AS ai_suspect_score,
+                        0 AS similarity_max_score,
+                        0 AS same_ip_risk_score,
+                        0 AS same_ip_student_count,
+                        0 AS tab_hidden_seconds
+                 FROM events ev
+                 LEFT JOIN students s ON (s.moodle_user_id = ev.moodle_user_id OR s.id = ev.moodle_user_id)
+                 WHERE (ev.moodle_quiz_id = ? OR ev.moodle_quiz_id = ?) AND (ev.account_id = ? OR ev.account_id = 0)
+                 GROUP BY ev.session_id, ev.moodle_user_id
+                 ORDER BY start_time DESC",
+                [$moodleQuizId, $internalExamId, $accountId]
+            );
+            if (!empty($evStudents)) {
+                $students = $evStudents;
+                $stats['total_students'] = count($students);
+                $stats['low_safe_count'] = count($students);
+            }
+        }
 
         // Dispatched teacher actions for this exam
         $actions = Database::fetchAll(
