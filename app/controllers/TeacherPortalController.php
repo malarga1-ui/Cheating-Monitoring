@@ -2357,7 +2357,7 @@ final class TeacherPortalController
         $events = Database::fetchAll(
             "SELECT ev.id, ev.event_id, ev.session_id, ev.sequence_number, ev.event_type, ev.event_time,
                     ev.moodle_quiz_id, ev.moodle_course_id, ev.moodle_user_id,
-                    ev.ip_address, ev.user_agent, ev.url, ev.payload_json, ev.created_at,
+                    ev.ip_address, ev.user_agent, ev.url, ev.payload, ev.created_at,
                     s.fullname, s.username
              FROM events ev
              LEFT JOIN students s ON (s.moodle_user_id = ev.moodle_user_id OR s.id = ev.moodle_user_id) AND (s.account_id = ev.account_id OR s.account_id = 0)
@@ -2369,8 +2369,8 @@ final class TeacherPortalController
         $parsedEvents = [];
         foreach ($events as $ev) {
             $payload = null;
-            if (!empty($ev['payload_json'])) {
-                $payload = json_decode($ev['payload_json'], true);
+            if (!empty($ev['payload'])) {
+                $payload = is_string($ev['payload']) ? json_decode($ev['payload'], true) : $ev['payload'];
             }
             $parsedEvents[] = [
                 'event_id'        => $ev['event_id'],
@@ -2390,7 +2390,7 @@ final class TeacherPortalController
                     'user_agent' => $ev['user_agent'],
                 ],
                 'url'             => $ev['url'],
-                'payload'         => $payload ?? $ev['payload_json'],
+                'payload'         => $payload ?? $ev['payload'],
                 'server_time'     => $ev['created_at'],
             ];
         }
