@@ -2269,7 +2269,7 @@ final class TeacherPortalController
                     COALESCE(t.fullname, CONCAT('مدرس #', ta.teacher_id)) AS teacher_name
              FROM teacher_actions ta
              LEFT JOIN students st ON (st.id = ta.student_id OR st.moodle_user_id = ta.student_id)
-             LEFT JOIN teachers t ON (t.moodle_teacher_id = ta.teacher_id OR t.id = ta.teacher_id)
+             LEFT JOIN teachers t ON t.moodle_teacher_id = ta.teacher_id
              WHERE (ta.exam_id = ? OR ta.exam_id = ?) AND (ta.account_id = ? OR ta.account_id = 0)
              ORDER BY ta.id DESC",
             [$internalExamId, $moodleQuizId, $accountId]

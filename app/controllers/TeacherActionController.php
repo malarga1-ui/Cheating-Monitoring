@@ -618,7 +618,7 @@ final class TeacherActionController
                  FROM teacher_actions ta
                  LEFT JOIN students st ON (st.id = ta.student_id OR st.moodle_user_id = ta.student_id) AND (st.account_id = ta.account_id OR st.account_id = 0)
                  LEFT JOIN exams e ON (e.id = ta.exam_id OR e.moodle_quiz_id = ta.exam_id)
-                 LEFT JOIN teachers t ON (t.moodle_teacher_id = ta.teacher_id OR t.id = ta.teacher_id) AND (t.account_id = ta.account_id OR t.account_id = 0)
+                 LEFT JOIN teachers t ON t.moodle_teacher_id = ta.teacher_id AND (t.account_id = ta.account_id OR t.account_id = 0)
                  WHERE $where
                  ORDER BY ta.id DESC
                  LIMIT 100",
