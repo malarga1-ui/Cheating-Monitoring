@@ -2158,7 +2158,7 @@ final class TeacherPortalController
 
         $exam = Database::fetchOne(
             'SELECT e.*, c.name AS course_name FROM exams e
-             LEFT JOIN courses c ON (c.id = e.course_id OR c.moodle_course_id = e.moodle_course_id)
+             LEFT JOIN courses c ON c.moodle_course_id = e.moodle_course_id AND (c.account_id = e.account_id OR c.account_id = 0)
              WHERE (e.id = ? OR e.moodle_quiz_id = ?) AND (e.account_id = ? OR e.account_id = 0)
              LIMIT 1',
             [$examId, $examId, $accountId]
