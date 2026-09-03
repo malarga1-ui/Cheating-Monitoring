@@ -2134,7 +2134,7 @@ final class TeacherPortalController
         $updated = 0;
 
         foreach ($sessions as $ss) {
-            $b = (float)($ss['behavioral_risk_score'] ?? 0);
+            $b = (float)($ss['risk_score'] ?? 0);
             $n = (float)($ss['same_ip_risk_score'] ?? 0);
             $a = (float)($ss['ai_suspect_score'] ?? 0);
             $s = (float)($ss['similarity_max_score'] ?? 0);
@@ -2194,7 +2194,7 @@ final class TeacherPortalController
                     COUNT(CASE WHEN risk_score >= 21 AND risk_score < 80 THEN 1 END) AS medium_count,
                     COUNT(CASE WHEN risk_score < 21 THEN 1 END) AS low_safe_count,
                     ROUND(AVG(risk_score), 1) AS avg_risk,
-                    ROUND(AVG(behavioral_risk_score), 1) AS avg_behavioral,
+                    ROUND(AVG(risk_score), 1) AS avg_behavioral,
                     ROUND(AVG(ai_suspect_score), 1) AS avg_ai,
                     ROUND(AVG(similarity_max_score), 1) AS avg_similarity,
                     COUNT(CASE WHEN same_ip_student_count > 0 THEN 1 END) AS ip_cluster_count
@@ -2206,6 +2206,7 @@ final class TeacherPortalController
         // Student roster ordered by risk with precise start, end, and duration
         $students = Database::fetchAll(
             "SELECT ss.*,
+                    ss.risk_score AS behavioral_risk_score,
                     COALESCE(s.fullname, CONCAT('طالب #', ss.student_id)) AS fullname,
                     COALESCE(s.username, CONCAT('user_', ss.student_id)) AS username,
                     COALESCE(s.moodle_user_id, ss.student_id) AS moodle_user_id,
