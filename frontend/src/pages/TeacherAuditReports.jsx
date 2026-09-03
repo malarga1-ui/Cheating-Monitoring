@@ -147,15 +147,15 @@ export default function TeacherAuditReports() {
   const getRiskBadge = (level, score) => {
     switch (level) {
       case 'critical':
-        return <span className="rounded-lg bg-rose-100 px-2.5 py-1 text-xs font-black text-rose-800 border border-rose-200">🚨 حرج ({score}%)</span>
+        return <span className="inline-flex items-center justify-center whitespace-nowrap rounded-lg bg-rose-100 px-2.5 py-1 text-xs font-black text-rose-800 border border-rose-200">🚨 حرج ({score}%)</span>
       case 'high':
-        return <span className="rounded-lg bg-orange-100 px-2.5 py-1 text-xs font-black text-orange-800 border border-orange-200">⚠️ مرتفع ({score}%)</span>
+        return <span className="inline-flex items-center justify-center whitespace-nowrap rounded-lg bg-orange-100 px-2.5 py-1 text-xs font-black text-orange-800 border border-orange-200">⚠️ مرتفع ({score}%)</span>
       case 'medium':
-        return <span className="rounded-lg bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-800 border border-amber-200">⚡ متوسط ({score}%)</span>
+        return <span className="inline-flex items-center justify-center whitespace-nowrap rounded-lg bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-800 border border-amber-200">⚡ متوسط ({score}%)</span>
       case 'low':
-        return <span className="rounded-lg bg-blue-100 px-2.5 py-1 text-xs font-black text-blue-800 border border-blue-200">ℹ️ منخفض ({score}%)</span>
+        return <span className="inline-flex items-center justify-center whitespace-nowrap rounded-lg bg-blue-100 px-2.5 py-1 text-xs font-black text-blue-800 border border-blue-200">ℹ️ منخفض ({score}%)</span>
       default:
-        return <span className="rounded-lg bg-emerald-100 px-2.5 py-1 text-xs font-black text-emerald-800 border border-emerald-200">✓ آمن ({score}%)</span>
+        return <span className="inline-flex items-center justify-center whitespace-nowrap rounded-lg bg-emerald-100 px-2.5 py-1 text-xs font-black text-emerald-800 border border-emerald-200">✓ آمن ({score}%)</span>
     }
   }
 
@@ -340,7 +340,7 @@ export default function TeacherAuditReports() {
                             {formatDuration(st.duration_seconds)}
                           </span>
                         </td>
-                        <td className="px-4 py-3.5">
+                        <td className="px-4 py-3.5 text-center whitespace-nowrap">
                           {getRiskBadge(st.risk_level, st.risk_score)}
                         </td>
                         <td className="px-4 py-3.5 text-center font-bold text-brand-700">

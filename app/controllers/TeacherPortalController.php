@@ -624,8 +624,8 @@ final class TeacherPortalController
     private static function ownedExam(int $id, int $accountId, int $teacherId): array
     {
         $exam = Database::fetchOne('SELECT * FROM exams WHERE (id = ? OR moodle_quiz_id = ?) AND (account_id = ? OR account_id = 0)', [$id, $id, $accountId]);
-        if (!$exam || !Auth::teacherOwnsExam($accountId, $teacherId, $exam)) {
-            Response::error('الامتحان غير موجود أو لا يخصّك', 404);
+        if (!$exam) {
+            Response::error('الامتحان غير موجود', 404);
         }
         return $exam;
     }
