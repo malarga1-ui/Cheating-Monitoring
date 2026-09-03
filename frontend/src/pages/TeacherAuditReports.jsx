@@ -196,6 +196,16 @@ export default function TeacherAuditReports() {
           </button>
 
           <button
+            onClick={() => window.open(`/api/teacher/reports/exam/${selectedExamId}/export-raw-json`, '_blank')}
+            disabled={!reportData}
+            className="flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/80 px-3.5 py-2 text-xs font-black text-indigo-700 hover:bg-indigo-100 shadow-sm transition-all disabled:opacity-50"
+            title="تنزيل حزمة الأحداث والمؤشرات الخام بالكامل بصيغة JSON"
+          >
+            <span>💾</span>
+            <span>تصدير JSON الخام</span>
+          </button>
+
+          <button
             onClick={handlePrint}
             disabled={!reportData}
             className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-black text-white hover:bg-indigo-700 shadow-md shadow-indigo-600/20 transition-all disabled:opacity-50"

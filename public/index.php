@@ -114,6 +114,7 @@ $router->get('/api/teacher/risk-formula', [TeacherPortalController::class, 'getR
 $router->post('/api/teacher/risk-formula', [TeacherPortalController::class, 'updateRiskFormula']);
 $router->post('/api/teacher/risk-formula/recompute', [TeacherPortalController::class, 'recomputeRiskFormula']);
 $router->get('/api/teacher/reports/exam/{id}', [TeacherPortalController::class, 'examAuditReport']);
+$router->get('/api/teacher/reports/exam/{id}/export-raw-json', [TeacherPortalController::class, 'exportExamRawJson']);
 
 // ---- SaaS accounts ---------------------------------------------------------
 $router->post('/api/accounts/register', [AccountController::class, 'register']);

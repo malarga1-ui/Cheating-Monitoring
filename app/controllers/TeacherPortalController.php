@@ -2328,4 +2328,100 @@ final class TeacherPortalController
             'generated_at' => gmdate('Y-m-d H:i:s') . ' UTC',
         ]);
     }
+
+    /**
+     * GET /api/teacher/reports/exam/{id}/export-raw-json
+     * Stream full raw telemetry JSON dataset for research and thesis benchmark.
+     */
+    public static function exportExamRawJson(int $examId): void
+    {
+        Auth::requireTeacher();
+        $accountId = Auth::accountId();
+
+        $exam = Database::fetchOne(
+            'SELECT e.*, c.name AS course_name FROM exams e
+             LEFT JOIN courses c ON c.moodle_course_id = e.moodle_course_id AND (c.account_id = e.account_id OR c.account_id = 0)
+             WHERE (e.id = ? OR e.moodle_quiz_id = ?) AND (e.account_id = ? OR e.account_id = 0)
+             LIMIT 1',
+            [$examId, $examId, $accountId]
+        );
+
+        if (!$exam) {
+            Response::error('الامتحان غير موجود', 404);
+        }
+
+        $internalExamId = (int)$exam['id'];
+        $moodleQuizId = (int)$exam['moodle_quiz_id'];
+
+        // Raw telemetry events
+        $events = Database::fetchAll(
+            "SELECT ev.id, ev.event_id, ev.session_id, ev.sequence_number, ev.event_type, ev.event_time,
+                    ev.moodle_quiz_id, ev.moodle_course_id, ev.moodle_user_id,
+                    ev.ip_address, ev.user_agent, ev.url, ev.payload_json, ev.created_at,
+                    s.fullname, s.username
+             FROM events ev
+             LEFT JOIN students s ON (s.moodle_user_id = ev.moodle_user_id OR s.id = ev.moodle_user_id) AND (s.account_id = ev.account_id OR s.account_id = 0)
+             WHERE (ev.moodle_quiz_id = ? OR ev.moodle_quiz_id = ?) AND (ev.account_id = ? OR ev.account_id = 0)
+             ORDER BY ev.id ASC",
+            [$moodleQuizId, $internalExamId, $accountId]
+        );
+
+        $parsedEvents = [];
+        foreach ($events as $ev) {
+            $payload = null;
+            if (!empty($ev['payload_json'])) {
+                $payload = json_decode($ev['payload_json'], true);
+            }
+            $parsedEvents[] = [
+                'event_id'        => $ev['event_id'],
+                'session_id'      => $ev['session_id'],
+                'sequence_number' => (int)$ev['sequence_number'],
+                'event_type'      => $ev['event_type'],
+                'event_time'      => $ev['event_time'],
+                'student'         => [
+                    'moodle_user_id' => (int)$ev['moodle_user_id'],
+                    'fullname'       => $ev['fullname'] ?? ('طالب #' . $ev['moodle_user_id']),
+                    'username'       => $ev['username'] ?? ('user_' . $ev['moodle_user_id']),
+                ],
+                'quiz_id'         => (int)$ev['moodle_quiz_id'],
+                'course_id'       => (int)$ev['moodle_course_id'],
+                'network'         => [
+                    'ip_address' => $ev['ip_address'],
+                    'user_agent' => $ev['user_agent'],
+                ],
+                'url'             => $ev['url'],
+                'payload'         => $payload ?? $ev['payload_json'],
+                'server_time'     => $ev['created_at'],
+            ];
+        }
+
+        // Fetch session summaries to provide calculated risk along with raw data
+        $summaries = Database::fetchAll(
+            "SELECT ss.*, s.fullname, s.username
+             FROM session_summaries ss
+             LEFT JOIN students s ON (s.id = ss.student_id OR s.moodle_user_id = ss.student_id) AND (s.account_id = ss.account_id OR s.account_id = 0)
+             WHERE (ss.exam_id = ? OR ss.exam_id = ?) AND (ss.account_id = ? OR ss.account_id = 0)",
+            [$internalExamId, $moodleQuizId, $accountId]
+        );
+
+        $export = [
+            'dataset_name'      => 'SOAR Exam Telemetry Raw Dataset',
+            'exported_at'       => date('Y-m-d H:i:s T'),
+            'exam'              => [
+                'id'          => $internalExamId,
+                'quiz_id'     => $moodleQuizId,
+                'name'        => $exam['name'],
+                'course_name' => $exam['course_name'],
+            ],
+            'total_students'    => count($summaries),
+            'total_events'      => count($parsedEvents),
+            'student_summaries' => $summaries,
+            'raw_events'        => $parsedEvents,
+        ];
+
+        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Disposition: attachment; filename="soar_raw_dataset_exam_' . $internalExamId . '.json"');
+        echo json_encode($export, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
 }
