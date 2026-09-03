@@ -102,6 +102,11 @@ export default function TeacherAnalytics({ courseId: propCourseId, examId: propE
   const [confirmModal, setConfirmModal] = useState({ open: false, title: '', message: '' })
 
   useEffect(() => {
+    if (isLiveDashboard && !hasActiveExam) {
+      setData(null)
+      setExamStudents([])
+      return
+    }
     let url = '/api/teacher/analytics'
     if (examId) {
       url += `?exam_id=${examId}`
@@ -127,7 +132,7 @@ export default function TeacherAnalytics({ courseId: propCourseId, examId: propE
     load()
     const timer = setInterval(load, 3000)
     return () => clearInterval(timer)
-  }, [examId, courseId])
+  }, [examId, courseId, isLiveDashboard, hasActiveExam])
 
   async function handleAction(type, actionParams) {
     setActionModal({ open: false, type: '', student: null })
@@ -195,41 +200,54 @@ export default function TeacherAnalytics({ courseId: propCourseId, examId: propE
     return (b.risk_score || 0) - (a.risk_score || 0)
   })
 
-  return (
-    <div className="space-y-8">
-      {/* Friendly Notice Banner when No Active Exam */}
-      {isIdleDashboard && (
+  if (isIdleDashboard) {
+    return (
+      <div className="space-y-6">
         <Reveal>
-          <div className="relative overflow-hidden rounded-3xl border border-sky-200/80 bg-gradient-to-r from-sky-50/90 via-white to-indigo-50/70 p-6 shadow-sm ring-1 ring-sky-100/50">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-600 text-white shadow-md shadow-sky-500/20 text-2xl">
+          <div className="relative overflow-hidden rounded-3xl border border-sky-200/80 bg-gradient-to-r from-sky-50/90 via-white to-indigo-50/70 p-8 shadow-sm ring-1 ring-sky-100/50">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-600 text-white shadow-lg shadow-sky-500/25 text-3xl">
                 🎓
               </div>
               <div className="flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-base font-extrabold text-slate-800">
-                    لا توجد امتحانات جارية حالياً للمدرس
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h2 className="text-lg font-extrabold text-slate-800">
+                    لا يوجد امتحان نشط حالياً للمراقبة المباشرة
                   </h2>
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-100 px-3 py-0.5 text-xs font-extrabold text-sky-700 ring-1 ring-sky-200">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-100 px-3 py-1 text-xs font-extrabold text-sky-700 ring-1 ring-sky-200">
                     <span className="relative flex h-2 w-2">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75" />
                       <span className="relative inline-flex h-2 w-2 rounded-full bg-sky-500" />
                     </span>
-                    وضع الجاهزية والاستعداد
+                    جاهز للبث المباشر فور دخول الطلاب
                   </span>
                 </div>
-                <p className="mt-1 text-xs font-bold leading-relaxed text-slate-600">
-                  لوحة التحكم جاهزة وفي وضع الاستعداد. فور بدء أي امتحان جديد لمساقاتك، ستتدفق البيانات والطلاب والانتهاكات تلقائياً هنا.
+                <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">
+                  لوحة المراقبة الحية تعمل بنظام الاستشعار التلقائي اللحظي (Real-Time). بمجرد أن يدخل أي طالب إلى أي امتحان في مساقاتك، ستظهر جلسته هنا فوراً مع تحديث مباشر لكل حدث ومخاطرة.
                 </p>
-                <div className="mt-2.5 flex items-center gap-2 rounded-xl bg-brand-50/80 px-3.5 py-2 text-xs font-extrabold text-brand-700 ring-1 ring-brand-200/60">
-                  <span>💡</span>
-                  <span>ملاحظة: للاطلاع على تفاصيل وتقارير الطلاب في الامتحانات السابقة التي تم تقديمها، يرجى الذهاب إلى تبويب "مساقاتي الدراسية" واختيار امتحانك المطلوب.</span>
+                <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl bg-amber-50/90 p-4 ring-1 ring-amber-200/70">
+                  <div className="flex items-center gap-2.5 text-xs font-bold text-amber-800">
+                    <span className="text-lg">📦</span>
+                    <span>تم حفظ وأرشفة بيانات الامتحانات السابقة تلقائياً في مستودع النتائج والتقارير. للاطلاع عليها تفضل بزيارة صفحة المساقات أو التقارير.</span>
+                  </div>
+                  <Link
+                    to="/teacher/portal/reports"
+                    className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-xs font-extrabold text-white shadow-md shadow-brand-500/20 hover:bg-brand-700 transition-all shrink-0"
+                  >
+                    <span>عرض سجل وأرشيف الامتحانات</span>
+                    <span>←</span>
+                  </Link>
                 </div>
               </div>
             </div>
           </div>
         </Reveal>
-      )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-8">
 
       {/* Header */}
       <Reveal>

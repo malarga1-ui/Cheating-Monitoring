@@ -150,20 +150,14 @@ final class SimilarityEngine
 
     private static function isObjectiveChoice(string $text, ?string $qType = null): bool
     {
-        if ($qType !== null && in_array(strtolower($qType), ['multichoice', 'truefalse', 'true_false', 'match', 'matching', 'gapselect', 'ddwtos', 'mcq'], true)) {
+        if ($qType !== null && in_array(strtolower($qType), ['multichoice', 'truefalse', 'true_false', 'match', 'matching', 'gapselect', 'ddwtos'], true)) {
             return true;
         }
         $trimmed = trim(strip_tags($text));
         if ($trimmed === '') return true;
 
-        // Check for simple single-choice tokens, numbers, or boolean words
-        if (preg_match('/^(true|false|yes|no|صح|خطأ|صواب|[a-fA-F0-9]|option\d*|choice\d*|item\d*|ans\d*)$/iu', $trimmed)) {
-            return true;
-        }
-
-        // Less than 3 words and less than 15 characters without spaces is likely an option label
-        $words = preg_split('/\s+/u', $trimmed, -1, PREG_SPLIT_NO_EMPTY);
-        if (count($words) < 3 && mb_strlen($trimmed) < 15) {
+        // Check for pure single-choice tokens, numbers, or boolean words
+        if (preg_match('/^(true|false|yes|no|صح|خطأ|صواب|[a-fA-F0-9]|option\d*|choice\d*)$/iu', $trimmed)) {
             return true;
         }
 

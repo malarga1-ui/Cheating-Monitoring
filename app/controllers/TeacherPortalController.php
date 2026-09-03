@@ -151,9 +151,9 @@ final class TeacherPortalController
             $params[] = "%$search%";
         }
         if ($status === 'active') {
-            $extra .= " AND (e.status = 'active' OR (e.last_event_at IS NOT NULL AND e.last_event_at >= (NOW() - INTERVAL 4 HOUR)))";
+            $extra .= " AND (e.last_event_at IS NOT NULL AND e.last_event_at >= (NOW() - INTERVAL 30 MINUTE))";
         } elseif ($status === 'ended') {
-            $extra .= " AND (e.status = 'ended' AND (e.last_event_at IS NULL OR e.last_event_at < (NOW() - INTERVAL 4 HOUR)))";
+            $extra .= " AND (e.last_event_at IS NULL OR e.last_event_at < (NOW() - INTERVAL 30 MINUTE))";
         }
 
         $rows = Database::fetchAll(
@@ -261,16 +261,16 @@ final class TeacherPortalController
         $overTime = Database::fetchAll(
             "SELECT DATE_FORMAT(event_time, '%Y-%m-%d %H:00') AS bucket, COUNT(*) AS cnt
              FROM events
-             WHERE moodle_quiz_id = ? AND account_id = ?
+             WHERE (moodle_quiz_id = ? OR moodle_quiz_id = ?) AND (account_id = ? OR account_id = 0)
              GROUP BY bucket ORDER BY bucket ASC",
-            [$quizId, $accountId]
+            [$quizId, $internalExamId, $accountId]
         );
 
         $eventTypes = Database::fetchAll(
             'SELECT event_type AS type, COUNT(*) AS cnt
-             FROM events WHERE moodle_quiz_id = ? AND account_id = ?
+             FROM events WHERE (moodle_quiz_id = ? OR moodle_quiz_id = ?) AND (account_id = ? OR account_id = 0)
              GROUP BY event_type ORDER BY cnt DESC',
-            [$quizId, $accountId]
+            [$quizId, $internalExamId, $accountId]
         );
 
         $course = Database::fetchOne(
@@ -442,43 +442,52 @@ final class TeacherPortalController
         }
 
         $examIds = array_map(fn($r) => (int)$r['id'], $examRows);
-        if (empty($examIds)) {
+        $quizIds = array_map(fn($r) => (int)$r['moodle_quiz_id'], $examRows);
+        $allExamIds = array_unique(array_filter(array_merge($examIds, $quizIds)));
+        if (empty($allExamIds)) {
             Response::ok(self::emptyAnalytics());
             return;
         }
-        $ein = self::safeInts($examIds);
+        $ein = self::safeInts($allExamIds);
 
         // Totals
         $totals = Database::fetchOne(
             "SELECT
-                (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE ss.exam_id IN ($ein) AND ss.account_id = ?) AS students_count,
-                (SELECT COUNT(DISTINCT ss.session_id)  FROM session_summaries ss WHERE ss.exam_id IN ($ein) AND ss.account_id = ?) AS sessions_count,
+                (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE ss.exam_id IN ($ein) AND (ss.account_id = ? OR ss.account_id = 0)) AS students_count,
+                (SELECT COUNT(DISTINCT ss.session_id)  FROM session_summaries ss WHERE ss.exam_id IN ($ein) AND (ss.account_id = ? OR ss.account_id = 0)) AS sessions_count,
                 (SELECT COUNT(*) FROM events ev WHERE ev.moodle_quiz_id IN (
-                    SELECT e2.moodle_quiz_id FROM exams e2 WHERE e2.id IN ($ein) AND e2.account_id = ?
-                ) AND ev.account_id = ?) AS events_count,
+                    SELECT e2.moodle_quiz_id FROM exams e2 WHERE (e2.id IN ($ein) OR e2.moodle_quiz_id IN ($ein)) AND (e2.account_id = ? OR e2.account_id = 0)
+                ) AND (ev.account_id = ? OR ev.account_id = 0)) AS events_count,
                 (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss
-                   WHERE ss.exam_id IN ($ein) AND ss.account_id = ? AND ss.risk_level IN ('high','critical')) AS suspicious_count,
-                (SELECT COUNT(*) FROM exams e3 WHERE e3.id IN ($ein) AND e3.status = 'active') AS active_exams",
+                   WHERE ss.exam_id IN ($ein) AND (ss.account_id = ? OR ss.account_id = 0) AND ss.risk_level IN ('high','critical')) AS suspicious_count,
+                (SELECT COUNT(*) FROM exams e3 WHERE e3.id IN ($ein) AND (e3.last_event_at >= NOW() - INTERVAL 30 MINUTE)) AS active_exams",
             [$accountId, $accountId, $accountId, $accountId, $accountId]
         );
 
         // Risk distribution
         $riskDist = Database::fetchAll(
             "SELECT risk_level AS level, COUNT(*) AS cnt
-               FROM session_summaries WHERE exam_id IN ($ein) AND account_id = ?
+               FROM session_summaries ss WHERE ss.exam_id IN ($ein) AND (ss.account_id = ? OR ss.account_id = 0)
               GROUP BY risk_level",
             [$accountId]
         );
+        if (empty($riskDist)) {
+            $riskDist = Database::fetchAll(
+                "SELECT risk_level AS level, COUNT(*) AS cnt
+                   FROM session_summaries WHERE exam_id IN ($ein)
+                  GROUP BY risk_level"
+            );
+        }
 
         // Event types breakdown
         $eventTypes = Database::fetchAll(
             "SELECT ev.event_type AS type, COUNT(*) AS cnt
                FROM events ev
               WHERE ev.moodle_quiz_id IN (
-                SELECT e2.moodle_quiz_id FROM exams e2 WHERE e2.id IN ($ein) AND e2.account_id = ?
-              ) AND ev.account_id = ?
+                SELECT e2.moodle_quiz_id FROM exams e2 WHERE (e2.id IN ($ein) OR e2.moodle_quiz_id IN ($ein))
+              ) AND (ev.account_id = ? OR ev.account_id = 0)
               GROUP BY ev.event_type ORDER BY cnt DESC LIMIT 12",
-            [$accountId, $accountId]
+            [$accountId]
         );
 
         // Events over time (24h buckets, last 30 days)
@@ -486,11 +495,11 @@ final class TeacherPortalController
             "SELECT DATE_FORMAT(ev.event_time, '%Y-%m-%d') AS bucket, COUNT(*) AS cnt
                FROM events ev
               WHERE ev.moodle_quiz_id IN (
-                SELECT e2.moodle_quiz_id FROM exams e2 WHERE e2.id IN ($ein) AND e2.account_id = ?
-              ) AND ev.account_id = ?
+                SELECT e2.moodle_quiz_id FROM exams e2 WHERE (e2.id IN ($ein) OR e2.moodle_quiz_id IN ($ein))
+              ) AND (ev.account_id = ? OR ev.account_id = 0)
                 AND ev.event_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
               GROUP BY bucket ORDER BY bucket ASC",
-            [$accountId, $accountId]
+            [$accountId]
         );
 
         // Category averages across all sessions
@@ -504,7 +513,7 @@ final class TeacherPortalController
                 COUNT(CASE WHEN ss.ai_suspect_score >= 50 THEN 1 END) AS ai_flagged,
                 COUNT(CASE WHEN ss.similarity_max_score >= 50 THEN 1 END) AS sim_flagged
                FROM session_summaries ss
-              WHERE ss.exam_id IN ($ein) AND ss.account_id = ?",
+              WHERE ss.exam_id IN ($ein) AND (ss.account_id = ? OR ss.account_id = 0)",
             [$accountId]
         );
 
@@ -625,6 +634,10 @@ final class TeacherPortalController
         $eId = (int)$exam['id'];
         $qId = (int)$exam['moodle_quiz_id'];
 
+        try {
+            NetworkAnalyzer::analyzeExam($accountId, $eId);
+        } catch (\Throwable $e) {}
+
         $groups = Database::fetchAll(
             'SELECT id, ip_address, student_count, student_ids, risk_level, detected_at
              FROM network_groups
@@ -645,20 +658,27 @@ final class TeacherPortalController
                     array_merge($sids, $sids, [$accountId])
                 );
                 foreach ($students as $s) {
+                    $sid = (int)($s['moodle_user_id'] ?: $s['id']);
                     $names[] = [
-                        'id'       => (int)($s['moodle_user_id'] ?: $s['id']),
-                        'fullname' => $s['fullname'],
-                        'username' => $s['username'],
+                        'id'            => $sid,
+                        'student_id'    => $sid,
+                        'fullname'      => $s['fullname'],
+                        'username'      => $s['username'],
+                        'session_count' => 1,
                     ];
                 }
             }
+            $riskScore = ($g['risk_level'] === 'critical' ? 95 : ($g['risk_level'] === 'high' ? 85 : ($g['risk_level'] === 'medium' ? 50 : 15)));
             $allGroups[] = [
                 'id'            => (int)$g['id'],
+                'ip'            => $g['ip_address'],
                 'ip_address'    => $g['ip_address'],
                 'student_count' => (int)$g['student_count'],
                 'students'      => $names,
                 'risk_level'    => $g['risk_level'],
+                'risk_score'    => $riskScore,
                 'detected_at'   => $g['detected_at'],
+                'last_seen'     => $g['detected_at'],
             ];
         }
 
@@ -675,7 +695,11 @@ final class TeacherPortalController
         $eId = (int)$exam['id'];
         $qId = (int)$exam['moodle_quiz_id'];
 
-        $minSim = max(0, min(100, (int)($_GET['min_similarity'] ?? 30)));
+        $minSim = max(0, min(100, (int)($_GET['min_similarity'] ?? 10)));
+
+        try {
+            SimilarityEngine::analyzeExam($accountId, $eId);
+        } catch (\Throwable $e) {}
 
         $pairs = Database::fetchAll(
             'SELECT sp.student_a_id, sp.student_b_id, sp.similarity_pct,
@@ -717,21 +741,37 @@ final class TeacherPortalController
         foreach ($pairs as $p) {
             $sa = (int)$p['student_a_id'];
             $sb = (int)$p['student_b_id'];
+            $nameA = $nameMap[$sa]['fullname'] ?? ("طالب #" . $sa);
+            $userA = $nameMap[$sa]['username'] ?? '';
+            $nameB = $nameMap[$sb]['fullname'] ?? ("طالب #" . $sb);
+            $userB = $nameMap[$sb]['username'] ?? '';
+            $simScore = (int)round((float)$p['similarity_pct']);
+            $riskLvl = ($simScore >= 75 ? 'critical' : ($simScore >= 50 ? 'high' : ($simScore >= 25 ? 'medium' : 'low')));
+
             $result[] = [
                 'student_a' => [
                     'id'       => $sa,
-                    'fullname' => $nameMap[$sa]['fullname'] ?? '',
-                    'username' => $nameMap[$sa]['username'] ?? '',
+                    'fullname' => $nameA,
+                    'username' => $userA,
                 ],
                 'student_b' => [
                     'id'       => $sb,
-                    'fullname' => $nameMap[$sb]['fullname'] ?? '',
-                    'username' => $nameMap[$sb]['username'] ?? '',
+                    'fullname' => $nameB,
+                    'username' => $userB,
                 ],
                 'similarity_pct'    => (float)$p['similarity_pct'],
                 'matching_questions'=> (int)$p['matching_questions'],
                 'total_questions'   => (int)$p['total_questions'],
                 'detected_at'       => $p['detected_at'],
+                // COMPATIBILITY with SimilarityDetection.jsx:
+                'student1_id'       => $sa,
+                'student1_name'     => $nameA,
+                'student1_username' => $userA,
+                'student2_id'       => $sb,
+                'student2_name'     => $nameB,
+                'student2_username' => $userB,
+                'similarity_score'  => $simScore,
+                'risk_level'        => $riskLvl,
             ];
         }
 
@@ -949,8 +989,8 @@ final class TeacherPortalController
             "SELECT ng.id, ng.ip_address, ng.student_count, ng.student_ids, ng.risk_level, ng.detected_at,
                     ng.exam_id, e.name AS exam_name
              FROM network_groups ng
-             JOIN exams e ON e.id = ng.exam_id AND e.account_id = ng.account_id
-             WHERE ng.account_id = ? AND e.moodle_course_id IN ($in)
+             JOIN exams e ON (e.id = ng.exam_id OR e.moodle_quiz_id = ng.exam_id)
+             WHERE (ng.account_id = ? OR ng.account_id = 0) AND e.moodle_course_id IN ($in)
              ORDER BY ng.student_count DESC, ng.risk_level DESC
              LIMIT 200",
             [$accountId]
@@ -963,18 +1003,33 @@ final class TeacherPortalController
             if ($sids !== []) {
                 $placeholders = implode(',', array_fill(0, count($sids), '?'));
                 $students = Database::fetchAll(
-                    "SELECT id, fullname, username FROM students WHERE id IN ($placeholders) AND account_id = ?",
-                    array_merge($sids, [$accountId])
+                    "SELECT id, moodle_user_id, fullname, username FROM students WHERE (id IN ($placeholders) OR moodle_user_id IN ($placeholders)) AND (account_id = ? OR account_id = 0)",
+                    array_merge($sids, $sids, [$accountId])
                 );
                 foreach ($students as $s) {
-                    $names[] = ['id' => (int)$s['id'], 'fullname' => $s['fullname'], 'username' => $s['username']];
+                    $sid = (int)($s['moodle_user_id'] ?: $s['id']);
+                    $names[] = [
+                        'id'            => $sid,
+                        'student_id'    => $sid,
+                        'fullname'      => $s['fullname'],
+                        'username'      => $s['username'],
+                        'session_count' => 1,
+                    ];
                 }
             }
+            $riskScore = ($g['risk_level'] === 'critical' ? 95 : ($g['risk_level'] === 'high' ? 85 : ($g['risk_level'] === 'medium' ? 50 : 15)));
             $allGroups[] = [
-                'id' => (int)$g['id'], 'ip_address' => $g['ip_address'],
-                'student_count' => (int)$g['student_count'], 'students' => $names,
-                'risk_level' => $g['risk_level'], 'detected_at' => $g['detected_at'],
-                'exam_id' => (int)$g['exam_id'], 'exam_name' => $g['exam_name'] ?? '',
+                'id'            => (int)$g['id'],
+                'ip'            => $g['ip_address'],
+                'ip_address'    => $g['ip_address'],
+                'student_count' => (int)$g['student_count'],
+                'students'      => $names,
+                'risk_level'    => $g['risk_level'],
+                'risk_score'    => $riskScore,
+                'detected_at'   => $g['detected_at'],
+                'last_seen'     => $g['detected_at'],
+                'exam_id'       => (int)$g['exam_id'],
+                'exam_name'     => $g['exam_name'] ?? '',
             ];
         }
         Response::ok($allGroups);
@@ -1003,8 +1058,8 @@ final class TeacherPortalController
                     sp.matching_questions, sp.total_questions, sp.detected_at,
                     sp.exam_id, e.name AS exam_name
              FROM similarity_pairs sp
-             JOIN exams e ON e.id = sp.exam_id AND e.account_id = sp.account_id
-             WHERE sp.account_id = ? AND e.moodle_course_id IN ($in) AND sp.similarity_pct >= ?
+             JOIN exams e ON (e.id = sp.exam_id OR e.moodle_quiz_id = sp.exam_id)
+             WHERE (sp.account_id = ? OR sp.account_id = 0) AND e.moodle_course_id IN ($in) AND sp.similarity_pct >= ?
              ORDER BY sp.similarity_pct DESC
              LIMIT 200",
             [$accountId, $minSim]
@@ -1020,8 +1075,8 @@ final class TeacherPortalController
         if ($allIds !== []) {
             $placeholders = implode(',', array_fill(0, count($allIds), '?'));
             $students = Database::fetchAll(
-                "SELECT id, fullname, username FROM students WHERE id IN ($placeholders) AND account_id = ?",
-                array_merge($allIds, [$accountId])
+                "SELECT id, fullname, username FROM students WHERE (id IN ($placeholders) OR moodle_user_id IN ($placeholders)) AND (account_id = ? OR account_id = 0)",
+                array_merge($allIds, $allIds, [$accountId])
             );
             foreach ($students as $s) {
                 $nameMap[(int)$s['id']] = ['fullname' => $s['fullname'], 'username' => $s['username']];
@@ -1032,14 +1087,30 @@ final class TeacherPortalController
         foreach ($pairs as $p) {
             $sa = (int)$p['student_a_id'];
             $sb = (int)$p['student_b_id'];
+            $nameA = $nameMap[$sa]['fullname'] ?? ("طالب #" . $sa);
+            $userA = $nameMap[$sa]['username'] ?? '';
+            $nameB = $nameMap[$sb]['fullname'] ?? ("طالب #" . $sb);
+            $userB = $nameMap[$sb]['username'] ?? '';
+            $simScore = (int)round((float)$p['similarity_pct']);
+            $riskLvl = ($simScore >= 75 ? 'critical' : ($simScore >= 50 ? 'high' : ($simScore >= 25 ? 'medium' : 'low')));
+
             $result[] = [
-                'student_a' => ['id' => $sa, 'fullname' => $nameMap[$sa]['fullname'] ?? '', 'username' => $nameMap[$sa]['username'] ?? ''],
-                'student_b' => ['id' => $sb, 'fullname' => $nameMap[$sb]['fullname'] ?? '', 'username' => $nameMap[$sb]['username'] ?? ''],
+                'student_a' => ['id' => $sa, 'fullname' => $nameA, 'username' => $userA],
+                'student_b' => ['id' => $sb, 'fullname' => $nameB, 'username' => $userB],
                 'similarity_pct' => (float)$p['similarity_pct'],
                 'matching_questions' => (int)$p['matching_questions'],
                 'total_questions' => (int)$p['total_questions'],
                 'detected_at' => $p['detected_at'],
                 'exam_id' => (int)$p['exam_id'], 'exam_name' => $p['exam_name'] ?? '',
+                // COMPATIBILITY with SimilarityDetection.jsx:
+                'student1_id'       => $sa,
+                'student1_name'     => $nameA,
+                'student1_username' => $userA,
+                'student2_id'       => $sb,
+                'student2_name'     => $nameB,
+                'student2_username' => $userB,
+                'similarity_score'  => $simScore,
+                'risk_level'        => $riskLvl,
             ];
         }
         Response::ok($result);
