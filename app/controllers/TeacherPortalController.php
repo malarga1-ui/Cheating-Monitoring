@@ -2357,7 +2357,7 @@ final class TeacherPortalController
         $events = Database::fetchAll(
             "SELECT ev.id, ev.event_id, ev.session_id, ev.sequence_number, ev.event_type, ev.event_time,
                     ev.moodle_quiz_id, ev.moodle_course_id, ev.moodle_user_id,
-                    ev.ip_address, ev.user_agent, ev.url, ev.payload, ev.created_at,
+                    ev.ip_address, ev.user_agent, ev.url, ev.payload, ev.received_at AS created_at,
                     s.fullname, s.username
              FROM events ev
              LEFT JOIN students s ON (s.moodle_user_id = ev.moodle_user_id OR s.id = ev.moodle_user_id) AND (s.account_id = ev.account_id OR s.account_id = 0)
