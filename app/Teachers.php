@@ -58,14 +58,16 @@ final class Teachers
         return $row;
     }
 
-    /** The teacher's course ids within an account (empty array = none). */
+    /** The teacher's course ids within an account (empty array = none). Strictly this teacher only. */
     public static function courseIds(int $accountId, int $teacherId): array
     {
         $rows = Database::fetchAll(
-            'SELECT moodle_course_id FROM course_teachers WHERE (account_id = ? OR account_id = 0) AND moodle_teacher_id = ?',
-            [$accountId, $teacherId]
+            'SELECT moodle_course_id FROM course_teachers WHERE (account_id = ? OR account_id = 0) AND moodle_teacher_id = ?
+             UNION
+             SELECT moodle_course_id FROM exams WHERE (account_id = ? OR account_id = 0) AND moodle_teacher_id = ? AND moodle_course_id > 0',
+            [$accountId, $teacherId, $accountId, $teacherId]
         );
-        return array_map(fn($r) => (int)$r['moodle_course_id'], $rows);
+        return array_values(array_unique(array_filter(array_map(fn($r) => (int)$r['moodle_course_id'], $rows))));
     }
 
     /**

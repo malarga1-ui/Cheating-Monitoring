@@ -423,8 +423,8 @@ final class Auth
             return true;
         }
 
-        // 4. Default fallback: allow access for authenticated teacher of the university
-        return true;
+        // 4. Default: teacher does not own this exam
+        return false;
     }
 
     /**

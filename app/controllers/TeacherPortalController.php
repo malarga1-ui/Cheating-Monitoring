@@ -19,12 +19,10 @@ final class TeacherPortalController
         $accountId = Auth::accountId();
         $teacherId = Auth::teacherId();
 
-        $teacherCourses = Teachers::courseIds($accountId, $teacherId);
-        $allCourses = self::allCourseIds($accountId);
-        $ids = array_values(array_unique(array_filter(array_merge($teacherCourses, $allCourses))));
+        $ids = Teachers::courseIds($accountId, $teacherId);
         $courseId = (int)($_GET['course_id'] ?? 0);
         if ($courseId > 0) {
-            $ids = [$courseId];
+            $ids = in_array($courseId, $ids, true) ? [$courseId] : [];
         }
         if ($ids === []) {
             Response::ok(self::emptySummary());
@@ -65,16 +63,14 @@ final class TeacherPortalController
         ]);
     }
 
-    /** The teacher's courses, each with co-teachers and per-course counts. */
+    /** The teacher's courses, each with co-teachers and per-course counts. Strictly this teacher only. */
     public static function courses(): void
     {
         Auth::requireTeacher();
         $accountId = Auth::accountId();
         $teacherId = Auth::teacherId();
 
-        $teacherCourses = Teachers::courseIds($accountId, $teacherId);
-        $allCourses = self::allCourseIds($accountId);
-        $ids = array_values(array_unique(array_filter(array_merge($teacherCourses, $allCourses))));
+        $ids = Teachers::courseIds($accountId, $teacherId);
         if ($ids === []) {
             Response::ok([]);
             return;
@@ -134,12 +130,10 @@ final class TeacherPortalController
         $accountId = Auth::accountId();
         $teacherId = Auth::teacherId();
 
-        $teacherCourses = Teachers::courseIds($accountId, $teacherId);
-        $allCourses = self::allCourseIds($accountId);
-        $ids = array_values(array_unique(array_filter(array_merge($teacherCourses, $allCourses))));
+        $ids = Teachers::courseIds($accountId, $teacherId);
         $courseId = (int)($_GET['course_id'] ?? 0);
         if ($courseId > 0) {
-            $ids = [$courseId];
+            $ids = in_array($courseId, $ids, true) ? [$courseId] : [];
         }
         if ($ids === []) {
             Response::ok([]);
@@ -403,9 +397,7 @@ final class TeacherPortalController
         $accountId = Auth::accountId();
         $teacherId = Auth::teacherId();
 
-        $teacherCourses = Teachers::courseIds($accountId, $teacherId);
-        $allCourses = self::allCourseIds($accountId);
-        $ids = array_values(array_unique(array_filter(array_merge($teacherCourses, $allCourses))));
+        $ids = Teachers::courseIds($accountId, $teacherId);
         $courseId = (int)($_GET['course_id'] ?? 0);
         $examId = (int)($_GET['exam_id'] ?? 0);
         $singleExam = null;
@@ -418,7 +410,7 @@ final class TeacherPortalController
                   WHERE (e.id = ? OR e.moodle_quiz_id = ?) AND (e.account_id = ? OR e.account_id = 0)",
                 [$examId, $examId, $accountId]
             );
-            if (!empty($examRows)) {
+            if (!empty($examRows) && Auth::teacherOwnsExam($accountId, $teacherId, $examRows[0])) {
                 $singleExam = [
                     'id'              => (int)$examRows[0]['id'],
                     'moodle_quiz_id'  => (int)$examRows[0]['moodle_quiz_id'],
@@ -429,7 +421,7 @@ final class TeacherPortalController
                 ];
             }
         } elseif ($courseId > 0) {
-            $ids = [$courseId];
+            $ids = in_array($courseId, $ids, true) ? [$courseId] : [];
         }
 
         if ($singleExam !== null) {
@@ -624,8 +616,8 @@ final class TeacherPortalController
     private static function ownedExam(int $id, int $accountId, int $teacherId): array
     {
         $exam = Database::fetchOne('SELECT * FROM exams WHERE (id = ? OR moodle_quiz_id = ?) AND (account_id = ? OR account_id = 0)', [$id, $id, $accountId]);
-        if (!$exam) {
-            Response::error('الامتحان غير موجود', 404);
+        if (!$exam || !Auth::teacherOwnsExam($accountId, $teacherId, $exam)) {
+            Response::error('الامتحان غير موجود أو لا يخصّك', 404);
         }
         return $exam;
     }
@@ -2176,8 +2168,8 @@ final class TeacherPortalController
             [$examId, $examId, $accountId]
         );
 
-        if (!$exam) {
-            Response::error('الامتحان غير موجود', 404);
+        if (!$exam || !Auth::teacherOwnsExam($accountId, $teacherId, $exam)) {
+            Response::error('الامتحان غير موجود أو لا يخصّك', 404);
         }
 
         $internalExamId = (int)$exam['id'];
@@ -2337,6 +2329,7 @@ final class TeacherPortalController
     {
         Auth::requireTeacher();
         $accountId = Auth::accountId();
+        $teacherId = Auth::teacherId();
 
         $exam = Database::fetchOne(
             'SELECT e.*, c.name AS course_name FROM exams e
@@ -2346,8 +2339,8 @@ final class TeacherPortalController
             [$examId, $examId, $accountId]
         );
 
-        if (!$exam) {
-            Response::error('الامتحان غير موجود', 404);
+        if (!$exam || !Auth::teacherOwnsExam($accountId, $teacherId, $exam)) {
+            Response::error('الامتحان غير موجود أو لا يخصّك', 404);
         }
 
         $internalExamId = (int)$exam['id'];
