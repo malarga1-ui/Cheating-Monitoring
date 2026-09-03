@@ -19,7 +19,9 @@ final class TeacherPortalController
         $accountId = Auth::accountId();
         $teacherId = Auth::teacherId();
 
-        $ids = Teachers::courseIds($accountId, $teacherId);
+        $teacherCourses = Teachers::courseIds($accountId, $teacherId);
+        $allCourses = self::allCourseIds($accountId);
+        $ids = array_values(array_unique(array_filter(array_merge($teacherCourses, $allCourses))));
         $courseId = (int)($_GET['course_id'] ?? 0);
         if ($courseId > 0) {
             $ids = [$courseId];
@@ -70,7 +72,9 @@ final class TeacherPortalController
         $accountId = Auth::accountId();
         $teacherId = Auth::teacherId();
 
-        $ids = Teachers::courseIds($accountId, $teacherId);
+        $teacherCourses = Teachers::courseIds($accountId, $teacherId);
+        $allCourses = self::allCourseIds($accountId);
+        $ids = array_values(array_unique(array_filter(array_merge($teacherCourses, $allCourses))));
         if ($ids === []) {
             Response::ok([]);
             return;
@@ -79,15 +83,15 @@ final class TeacherPortalController
 
         $rows = Database::fetchAll(
             "SELECT c.id, c.moodle_course_id, c.name, c.created_at,
-                    (SELECT COUNT(*) FROM exams e WHERE e.account_id = c.account_id AND e.moodle_course_id = c.moodle_course_id) AS exams_count,
+                    (SELECT COUNT(*) FROM exams e WHERE (e.account_id = c.account_id OR e.account_id = 0) AND e.moodle_course_id = c.moodle_course_id) AS exams_count,
                     (SELECT COUNT(DISTINCT s.id)
                        FROM students s
-                      WHERE s.account_id = c.account_id
-                        AND IF(s.moodle_user_id > 0, s.moodle_user_id, s.id) IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = c.account_id AND cs.moodle_course_id = c.moodle_course_id)
-                        AND s.username NOT IN (SELECT username FROM teachers WHERE account_id = c.account_id AND username != '')
+                      WHERE (s.account_id = c.account_id OR s.account_id = 0)
+                        AND IF(s.moodle_user_id > 0, s.moodle_user_id, s.id) IN (SELECT cs.student_id FROM course_students cs WHERE (cs.account_id = c.account_id OR cs.account_id = 0) AND cs.moodle_course_id = c.moodle_course_id)
+                        AND s.username NOT IN (SELECT username FROM teachers WHERE (account_id = c.account_id OR account_id = 0) AND username != '')
                     ) AS students_count
                FROM courses c
-              WHERE c.account_id = ? AND c.moodle_course_id IN ($in)
+              WHERE (c.account_id = ? OR c.account_id = 0) AND c.moodle_course_id IN ($in)
               ORDER BY c.name",
             [$accountId]
         );
@@ -95,8 +99,8 @@ final class TeacherPortalController
         $coTeachers = Database::fetchAll(
             "SELECT DISTINCT ct.moodle_course_id, t.moodle_teacher_id AS teacher_id, t.fullname, t.username
                FROM course_teachers ct
-               JOIN teachers t ON t.moodle_teacher_id = ct.moodle_teacher_id AND t.account_id = ct.account_id
-              WHERE ct.account_id = ? AND ct.moodle_course_id IN ($in)
+               JOIN teachers t ON t.moodle_teacher_id = ct.moodle_teacher_id AND (t.account_id = ct.account_id OR t.account_id = 0)
+              WHERE (ct.account_id = ? OR ct.account_id = 0) AND ct.moodle_course_id IN ($in)
               ORDER BY t.fullname",
             [$accountId]
         );
@@ -130,7 +134,9 @@ final class TeacherPortalController
         $accountId = Auth::accountId();
         $teacherId = Auth::teacherId();
 
-        $ids = Teachers::courseIds($accountId, $teacherId);
+        $teacherCourses = Teachers::courseIds($accountId, $teacherId);
+        $allCourses = self::allCourseIds($accountId);
+        $ids = array_values(array_unique(array_filter(array_merge($teacherCourses, $allCourses))));
         $courseId = (int)($_GET['course_id'] ?? 0);
         if ($courseId > 0) {
             $ids = [$courseId];
@@ -397,7 +403,9 @@ final class TeacherPortalController
         $accountId = Auth::accountId();
         $teacherId = Auth::teacherId();
 
-        $ids = Teachers::courseIds($accountId, $teacherId);
+        $teacherCourses = Teachers::courseIds($accountId, $teacherId);
+        $allCourses = self::allCourseIds($accountId);
+        $ids = array_values(array_unique(array_filter(array_merge($teacherCourses, $allCourses))));
         $courseId = (int)($_GET['course_id'] ?? 0);
         $examId = (int)($_GET['exam_id'] ?? 0);
         $singleExam = null;
@@ -1724,10 +1732,14 @@ final class TeacherPortalController
     private static function allCourseIds(int $accountId): array
     {
         $rows = Database::fetchAll(
-            'SELECT DISTINCT moodle_course_id FROM exams WHERE account_id = ? AND moodle_course_id > 0',
-            [$accountId]
+            'SELECT DISTINCT moodle_course_id FROM exams WHERE (account_id = ? OR account_id = 0) AND moodle_course_id > 0
+             UNION
+             SELECT DISTINCT moodle_course_id FROM courses WHERE (account_id = ? OR account_id = 0) AND moodle_course_id > 0
+             UNION
+             SELECT DISTINCT moodle_course_id FROM events WHERE (account_id = ? OR account_id = 0) AND moodle_course_id > 0',
+            [$accountId, $accountId, $accountId]
         );
-        return array_map(fn($r) => (int)$r['moodle_course_id'], $rows);
+        return array_values(array_unique(array_filter(array_map(fn($r) => (int)$r['moodle_course_id'], $rows))));
     }
 
     /* ── v10: Student answers endpoint ─────────────────────────────── */
