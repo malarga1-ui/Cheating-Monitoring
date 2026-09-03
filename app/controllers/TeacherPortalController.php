@@ -2177,6 +2177,8 @@ final class TeacherPortalController
 
         try {
             Aggregator::process(1000);
+            SimilarityEngine::analyzeExam($accountId, $internalExamId);
+            NetworkAnalyzer::analyzeExam($accountId, $internalExamId);
         } catch (\Throwable $e) {}
 
         // Exam summary statistics
