@@ -2262,6 +2262,51 @@ final class TeacherPortalController
             }
         }
 
+        // Apply thesis Eq 3.16 composite MCDA risk calculation
+        $highCrit = 0;
+        $med = 0;
+        $lowSafe = 0;
+        $sumRisk = 0;
+
+        foreach ($students as &$st) {
+            $b = (float)($st['behavioral_risk_score'] ?? 0);
+            $a = (float)($st['ai_suspect_score'] ?? 0);
+            $s = (float)($st['similarity_max_score'] ?? 0);
+            $n = (float)($st['same_ip_risk_score'] ?? 0);
+
+            // Weights from SOAR dissertation: wB=4/15, wA=3/15, wS=4/15, wN=4/15
+            $wB = 4.0 / 15.0;
+            $wA = 3.0 / 15.0;
+            $wS = 4.0 / 15.0;
+            $wN = 4.0 / 15.0;
+            $compScore = (int)round(($wB * $b) + ($wA * $a) + ($wS * $s) + ($wN * $n));
+            $compScore = max(0, min(100, $compScore));
+
+            $st['risk_score'] = $compScore;
+            $st['risk_level'] = RiskEngine::levelFor($compScore);
+
+            if ($compScore >= 80) {
+                $highCrit++;
+            } elseif ($compScore >= 21) {
+                $med++;
+            } else {
+                $lowSafe++;
+            }
+            $sumRisk += $compScore;
+        }
+        unset($st);
+
+        // Sort students descending by composite risk score
+        usort($students, fn($x, $y) => $y['risk_score'] <=> $x['risk_score']);
+
+        if (!empty($students)) {
+            $stats['total_students'] = count($students);
+            $stats['high_critical_count'] = $highCrit;
+            $stats['medium_count'] = $med;
+            $stats['low_safe_count'] = $lowSafe;
+            $stats['avg_risk'] = round($sumRisk / count($students), 1);
+        }
+
         // Dispatched teacher actions for this exam
         $actions = Database::fetchAll(
             "SELECT ta.*,
