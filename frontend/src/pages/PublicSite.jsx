@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { SITE } from '../site.config'
 import { Reveal, Tilt, GlowCard } from '../components/motion'
-import { Terminal } from '../components/InstallBits'
+import { Terminal, PathTree, FileTree } from '../components/InstallBits'
 
 const SECTION = 'mx-auto w-full max-w-6xl px-5 lg:px-8'
 
@@ -117,6 +117,17 @@ function Avatar({ name, photo }) {
 }
 
 export default function PublicSite() {
+  const [installTab, setInstallTab] = useState('script')
+  const [copiedScript, setCopiedScript] = useState(false)
+
+  const copyOneLiner = async () => {
+    try {
+      await navigator.clipboard.writeText('curl -fsSL https://jadallahkhaled.com/scripts/install_plugin.sh | bash')
+      setCopiedScript(true)
+      setTimeout(() => setCopiedScript(false), 2000)
+    } catch {}
+  }
+
   return (
     <div className="min-h-screen bg-white text-slate-800" dir="rtl">
       {/* Navbar */}
@@ -136,9 +147,10 @@ export default function PublicSite() {
             </div>
           </div>
           <nav className="hidden items-center gap-6 text-sm font-bold text-slate-500 md:flex">
+            <a href="#problem-gap" className="transition-colors hover:text-brand-600">المشكلة والفجوة البحثية</a>
             <a href="#features" className="transition-colors hover:text-brand-600">المميزات</a>
             <a href="#how" className="transition-colors hover:text-brand-600">كيف يعمل</a>
-            <a href="#install" className="transition-colors hover:text-brand-600">التثبيت</a>
+            <a href="#install" className="transition-colors hover:text-brand-600">التثبيت الذكي</a>
             <a href="#pricing" className="transition-colors hover:text-brand-600">الأسعار</a>
             <a href="#team" className="transition-colors hover:text-brand-600">الفريق</a>
           </nav>
@@ -246,8 +258,8 @@ export default function PublicSite() {
           {[
             { v: 4, suffix: '', l: 'محركات ذكية للرصد', icon: '🧠' },
             { v: 100, suffix: '%', l: 'فصل تام عن سيرفر Moodle', icon: '🛡️' },
-            { v: 5, suffix: '', l: 'دقائق التثبيت', icon: '⚡' },
-            { v: 7, suffix: ' أيام', l: 'نسخة تجريبية', icon: '🎁' },
+            { v: 5, suffix: '', l: 'دقائق التثبيت الذكي', icon: '⚡' },
+            { v: 30, suffix: ' يوماً', l: 'فترة تجريبية مجانية', icon: '🎁' },
           ].map((s) => (
             <div key={s.l} className="text-center transition-all hover:scale-105">
               <p className="text-3xl font-extrabold text-slate-900">
@@ -256,6 +268,194 @@ export default function PublicSite() {
               <p className="mt-1 text-sm font-semibold text-slate-500">{s.l}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Problem & Research Gap Section */}
+      <section id="problem-gap" className="relative overflow-hidden py-20 lg:py-24">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute top-1/3 left-0 h-96 w-96 rounded-full bg-violet-100/40 blur-3xl" />
+          <div className="absolute bottom-0 right-0 h-96 w-96 rounded-full bg-brand-100/40 blur-3xl" />
+        </div>
+
+        <div className={`${SECTION} relative`}>
+          {/* Header */}
+          <div className="mx-auto max-w-3xl text-center">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-3.5 py-1 text-xs font-bold text-rose-700 ring-1 ring-rose-200">
+              <span>🎯</span>
+              الإطار الأكاديمي والبحثي
+            </span>
+            <h2 className="mt-4 text-3xl font-extrabold text-slate-900 sm:text-4xl">
+              المشكلة الواقعية والفجوة البحثية
+            </h2>
+            <p className="mt-3 text-base leading-relaxed text-slate-600">
+              في ظل الثورة المتسارعة للذكاء الاصطناعي والتعليم الرقمي، أصبحت أنظمة المراقبة التقليدية عاجزة عن حماية النزاهة الأكاديمية. هنا نوضح جوهر الأزمة، وما أهملته الأبحاث السابقة، وكيف يسد مشروعنا هذا الفراغ العلمي والتطبيقي.
+            </p>
+          </div>
+
+          {/* Part 1: Real World Problem */}
+          <div className="mt-14">
+            <div className="flex items-center gap-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-rose-500 text-sm font-bold text-white shadow-md shadow-rose-500/30">١</span>
+              <h3 className="text-xl font-extrabold text-slate-900">المشكلة الواقعية في الامتحانات المعاصرة</h3>
+            </div>
+            <p className="mt-1.5 text-xs text-slate-500">أشكال الغش الرقمي الحديث التي تخترق المنظومات التقليدية وتفرغ نتائج الاختبارات من قيمتها:</p>
+
+            <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-3">
+              <div className="rounded-2xl border border-rose-100 bg-white p-6 shadow-sm transition-all hover:shadow-md hover:border-rose-200">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-rose-500 to-pink-600 text-2xl text-white shadow-md shadow-rose-500/20">
+                  🤖
+                </div>
+                <h4 className="mt-4 text-base font-extrabold text-slate-800">طوفان الذكاء الاصطناعي (GenAI & LLMs)</h4>
+                <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                  أدوات الذكاء الاصطناعي التوليدي مثل ChatGPT و Claude و Gemini قادرة على صياغة حلول معقدة وتحليل مقالات برمجية ونظرية في ثوانٍ معدودة. نسخ السؤال ولصق الإجابة المكتملة أفقد الامتحانات الإلكترونية قدرتها على قياس الفهم الحقيقي.
+                </p>
+                <div className="mt-4 rounded-xl bg-rose-50/80 p-3 text-[11px] font-semibold text-rose-800">
+                  ⚠️ النتيجة: درجات ممتازة وهمية لطلاب اعتمدوا على التوليد الآلي دون بذل أي جهد فكري.
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-amber-100 bg-white p-6 shadow-sm transition-all hover:shadow-md hover:border-amber-200">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-2xl text-white shadow-md shadow-amber-500/20">
+                  👥
+                </div>
+                <h4 className="mt-4 text-base font-extrabold text-slate-800">التواطؤ الجماعي وتعدد الأجهزة (Collusion)</h4>
+                <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                  اجتماع الطلاب في قاعة واحدة أو استخدام هواتف ثانوية غير مرئية خلف الشاشة، وتناقل الإجابات عبر قنوات اتصال سريعة. نظم إدارة التعلم مثل Moodle ترى كل طالب ككيان مستقل تماماً ولا تملك أي رؤية ترابطية بين الطلاب.
+                </p>
+                <div className="mt-4 rounded-xl bg-amber-50/80 p-3 text-[11px] font-semibold text-amber-800">
+                  ⚠️ النتيجة: إجابات جماعية متطابقة ممررة بين الأقران تمر دون أي تنبيه للمدرس.
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-violet-100 bg-white p-6 shadow-sm transition-all hover:shadow-md hover:border-violet-200">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 text-2xl text-white shadow-md shadow-violet-500/20">
+                  👁️
+                </div>
+                <h4 className="mt-4 text-base font-extrabold text-slate-800">معضلة المراقبة القمعية وانتهاك الخصوصية</h4>
+                <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                  الأنظمة التجارية التقليدية تفرض فتح الكاميرا والمايكروفون ومسح غرف المنازل، مما يسبب قلقاً وتوتراً للطلبة وانتهاكاً صارخاً للخصوصية واستهلاكاً ضخماً للإنترنت، ومع ذلك تعجز عن اكتشاف ما يدور خارج زاوية الكاميرا.
+                </p>
+                <div className="mt-4 rounded-xl bg-violet-50/80 p-3 text-[11px] font-semibold text-violet-800">
+                  ⚠️ النتيجة: انتهاك خصوصية باهظ التكلفة مع فاعلية رصد متدنية وسهلة الالتفاف.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Part 2: Research Gap & Our Scientific Novelty */}
+          <div className="mt-16">
+            <div className="flex items-center gap-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-600 text-sm font-bold text-white shadow-md shadow-brand-600/30">٢</span>
+              <h3 className="text-xl font-extrabold text-slate-900">الفجوة البحثية والمساهمة العلمية للمشروع</h3>
+            </div>
+            <p className="mt-1.5 text-xs text-slate-500">أين توقفت الأدبيات السابقة وماذا يقدم بحثنا لحل التحدي بطريقة علمية محكمة:</p>
+
+            <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-2">
+              {/* Gap 1 */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <span className="rounded-lg bg-red-100 px-2.5 py-1 text-[11px] font-extrabold text-red-700">الفجوة البحثية الأولى</span>
+                  <span className="text-xs font-bold text-slate-400">أحادية الرصد vs الاندماج متعدد الوسائط</span>
+                </div>
+                <div className="mt-4 space-y-3 text-xs leading-relaxed">
+                  <div className="rounded-xl bg-slate-50 p-3.5 border-r-2 border-red-500">
+                    <p className="font-extrabold text-slate-700">❌ قصور الأنظمة السابقة:</p>
+                    <p className="mt-1 text-slate-500">
+                      تعتمد معظم الدراسات على مؤشر واحد فقط (مثل إخفاء التبويب فقط، أو فحص نصوص بعد انتهاء الاختبار)، مما يؤدي لقرارات خاطئة ومعدل إنذارات زائفة مرتفع جداً (High False-Positive Rate).
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-emerald-50/70 p-3.5 border-r-2 border-emerald-500">
+                    <p className="font-extrabold text-emerald-800">✅ ابتكار مشروعنا (Multimodal Telemetry Fusion):</p>
+                    <p className="mt-1 text-emerald-700">
+                      بناء نموذج اندماج رياضي متكامل يدمج ٤ أبعاد متزامنة في مؤشر خطورة موحد:
+                    </p>
+                    <div className="mt-2 rounded-lg bg-emerald-900/90 px-3 py-2 font-mono text-[12px] font-bold text-emerald-300 text-center" dir="ltr">
+                      Risk = w_B · Behavior + w_S · Similarity + w_N · Network + w_A · AI_Gen
+                    </div>
+                    <p className="mt-1 text-[11px] text-emerald-600">
+                      كل بعد يغطي ثغرة الآخر ليضمن دقة تشخيصية عالية وموثوقة أكاديمياً.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Gap 2 */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <span className="rounded-lg bg-red-100 px-2.5 py-1 text-[11px] font-extrabold text-red-700">الفجوة البحثية الثانية</span>
+                  <span className="text-xs font-bold text-slate-400">إيجابيات كاذبة في خيارات متعددة</span>
+                </div>
+                <div className="mt-4 space-y-3 text-xs leading-relaxed">
+                  <div className="rounded-xl bg-slate-50 p-3.5 border-r-2 border-red-500">
+                    <p className="font-extrabold text-slate-700">❌ قصور الأنظمة السابقة:</p>
+                    <p className="mt-1 text-slate-500">
+                      محركات الانتحال الحالية تقارن كل إجابات الطلاب دون تمييز، فإذا اختار طالبان الخيار الصحيح (A) في سؤال خيارات متعددة يتم تصنيفهما كمتشابهين 100%!
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-emerald-50/70 p-3.5 border-r-2 border-emerald-500">
+                    <p className="font-extrabold text-emerald-800">✅ ابتكار مشروعنا (Selective Question-Type Intelligence):</p>
+                    <p className="mt-1 text-emerald-700">
+                      تصميم خوارزمي دقيق يفصل منطق التحليل بحسب نوع السؤال:
+                    </p>
+                    <ul className="mt-1.5 list-inside list-disc space-y-1 text-[11px] text-emerald-700">
+                      <li><strong>الأسئلة المقالية:</strong> تخضع لخوارزميات التشابه التركيبي والدلالي (Jaccard + Cosine Similarity) لاكتشاف التطابق النصي.</li>
+                      <li><strong>أسئلة الاختيار من متعدد:</strong> تُستثنى تماماً من فحص التشابه النصي، وتُحلل سلوكياً عبر زمن الإجابة الفائق السرعة ومحرك الشبكة.</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {/* Gap 3 */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <span className="rounded-lg bg-red-100 px-2.5 py-1 text-[11px] font-extrabold text-red-700">الفجوة البحثية الثالثة</span>
+                  <span className="text-xs font-bold text-slate-400">المعالجة بعد فوات الأوان vs استجابة مغلقة الحلقة</span>
+                </div>
+                <div className="mt-4 space-y-3 text-xs leading-relaxed">
+                  <div className="rounded-xl bg-slate-50 p-3.5 border-r-2 border-red-500">
+                    <p className="font-extrabold text-slate-700">❌ قصور الأنظمة السابقة:</p>
+                    <p className="mt-1 text-slate-500">
+                      أغلب أدوات Moodle تعمل بنمط (Post-mortem Analysis)، حيث يكتشف الأستاذ الغش بعد ساعات أو أيام من انتهاء الامتحان وإعلان النتائج، دون أي قدرة على التدخل الفوري لمنع استمرار المخالفة.
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-emerald-50/70 p-3.5 border-r-2 border-emerald-500">
+                    <p className="font-extrabold text-emerald-800">✅ ابتكار مشروعنا (Closed-Loop SOAR Active Response):</p>
+                    <p className="mt-1 text-emerald-700">
+                      تطبيق معمارية التنسيق والاستجابة الأمنية الآلية (SOAR) للتدخل اللحظي أثناء الامتحان:
+                    </p>
+                    <ul className="mt-1.5 list-inside list-disc space-y-1 text-[11px] text-emerald-700">
+                      <li><strong>تقليص الوقت ديناميكياً:</strong> خفض وقت الطالب فورياً عند تكرار المغادرة.</li>
+                      <li><strong>قفل الامتحان الفوري:</strong> شاشة حظر طارئة تتطلب كود أستاذ لإعادة الفتح.</li>
+                      <li><strong>تنبيهات ردع فورية:</strong> رسائل تحذير رسمية تظهر مباشرة أمام الطالب المخالف.</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {/* Gap 4 */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <span className="rounded-lg bg-red-100 px-2.5 py-1 text-[11px] font-extrabold text-red-700">الفجوة البحثية الرابعة</span>
+                  <span className="text-xs font-bold text-slate-400">عبء خادم LMS وسلامة البيانات</span>
+                </div>
+                <div className="mt-4 space-y-3 text-xs leading-relaxed">
+                  <div className="rounded-xl bg-slate-50 p-3.5 border-r-2 border-red-500">
+                    <p className="font-extrabold text-slate-700">❌ قصور الأنظمة السابقة:</p>
+                    <p className="mt-1 text-slate-500">
+                      معالجة الغش داخل سيرفر Moodle نفسه تستهلك موارد قاعدة البيانات وتؤدي لسقوط السيرفر عند وجود مئات الطلاب في وقت واحد، فضلاً عن سهولة التلاعب بها عبر ثغرات الـ Webhooks المدمجة.
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-emerald-50/70 p-3.5 border-r-2 border-emerald-500">
+                    <p className="font-extrabold text-emerald-800">✅ ابتكار مشروعنا (Decoupled Out-of-Band Engine):</p>
+                    <p className="mt-1 text-emerald-700">
+                      بناء خادم تحليلي مستقل تماماً، معتمد على تدفق telemetry غير متزامن فائق السرعة عبر API خفيف لا يؤثر إطلاقاً على سيرفر Moodle التعليمي، مع أمان تشفير كامل بدون أي اعتمادية على الكاميرا.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -375,25 +575,31 @@ export default function PublicSite() {
         </div>
       </section>
 
-      {/* How to start */}
+      {/* How to start & Installation Section */}
       <section id="install" className="border-y border-slate-100 bg-slate-50/60 py-20 lg:py-24">
         <div className={`${SECTION}`}>
-          <div className="mx-auto max-w-2xl text-center">
-            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 ring-1 ring-emerald-100">كيف تبدأ</span>
-            <h2 className="mt-4 text-3xl font-extrabold text-slate-900">أربع خطوات بسيطة تفصلك عن أول امتحان مراقب</h2>
-            <p className="mt-3 text-slate-500">
-              أنشئ حساباً مجانياً وسنرشدك خطوة بخطوة داخل لوحة التحكم مع شريط تقدم يوضح ما أنجزته وما تبقّى — دون أي خبرة برمجية.
+          <div className="mx-auto max-w-3xl text-center">
+            <span className="rounded-full bg-emerald-50 px-3.5 py-1 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200">
+              ⚡ التثبيت والتهيئة السريعة
+            </span>
+            <h2 className="mt-4 text-3xl font-extrabold text-slate-900 sm:text-4xl">
+              تثبيت سهل وسريع خلال دقيقتين فقط
+            </h2>
+            <p className="mt-3 text-base leading-relaxed text-slate-600">
+              صممنا سكربت تثبيت ذكي يتعرف تلقائياً على مسار خادم مودل وينشئ مجلد الإضافة ويسحب أحدث نسخة من GitHub ويحدّث قاعدة البيانات فورياً — دون أي تعقيد.
             </p>
           </div>
-          <div className="mx-auto mt-12 grid max-w-4xl grid-cols-1 gap-5 md:grid-cols-4">
+
+          {/* 4 Steps */}
+          <div className="mx-auto mt-12 grid max-w-5xl grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {[
-              { n: '١', t: 'أنشئ حسابك', d: 'حساب مجاني مع نسخة تجريبية كاملة لمدة 7 أيام.' },
-              { n: '٢', t: 'نزّل الإضافة', d: 'سكربت جاهز يبحث عن المسار ويثبّت الإضافة نيابة عنك، أو يدوياً بدقائق.' },
-              { n: '٣', t: 'اربط المنصة', d: 'انسخ مفتاحك الخاص من حسابك وألصقه في إعدادات مودل.' },
-              { n: '٤', t: 'راقب امتحاناتك', d: 'فعّل المراقبة على أي اختبار وابدأ استقبال النتائج فوراً.' },
+              { n: '١', t: 'أنشئ حسابك', d: 'سجل حساب جديد واحصل فوراً على فترة تجريبية مجانية كاملة الميزات لمدة 30 يوماً.' },
+              { n: '٢', t: 'التثبيت الذكي', d: 'أمر واحد في التيرمنال يكتشف مسار مودل ويثبت الإضافة في mod/quiz/accessrule/exammonitor.' },
+              { n: '٣', t: 'اربط المنصة', d: 'انسخ رابط المنصة ومفتاح الحساب السري من لوحة تحكمك وألصقهما في إعدادات مودل.' },
+              { n: '٤', t: 'راقب الاختبارات', d: 'افتح إعدادات أي اختبار في مودل وفعّل «مراقبة الامتحان الذكية» لمتابعة الطلاب مباشرة.' },
             ].map((s, i) => (
-              <Reveal key={s.n} delay={i * 80}>
-                <div className="h-full rounded-2xl bg-white p-5 ring-1 ring-slate-200/70 transition-all duration-300 hover:-translate-y-2 hover:shadow-[0_20px_50px_-20px_rgba(16,24,40,.15)]">
+              <Reveal key={s.n} delay={i * 70}>
+                <div className="h-full rounded-2xl bg-white p-5 ring-1 ring-slate-200/70 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-[0_20px_50px_-20px_rgba(16,24,40,.15)]">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-violet-600 text-sm font-extrabold text-white shadow-lg shadow-brand-600/25">
                     {s.n}
                   </div>
@@ -403,10 +609,177 @@ export default function PublicSite() {
               </Reveal>
             ))}
           </div>
-          <div className="mx-auto mt-10 max-w-3xl">
-            <Terminal lines={SITE.installCommands} />
+
+          {/* Interactive Install Tabs */}
+          <div className="mx-auto mt-14 max-w-4xl">
+            <div className="flex flex-wrap items-center justify-center gap-2 rounded-2xl bg-slate-200/70 p-1.5 text-xs font-bold text-slate-600">
+              <button
+                type="button"
+                onClick={() => setInstallTab('script')}
+                className={`flex items-center gap-2 rounded-xl px-5 py-2.5 transition-all ${
+                  installTab === 'script'
+                    ? 'bg-white text-brand-700 shadow-md shadow-slate-300/40'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>⚡</span>
+                السكربت الذكي التلقائي (موصى به)
+              </button>
+              <button
+                type="button"
+                onClick={() => setInstallTab('manual')}
+                className={`flex items-center gap-2 rounded-xl px-5 py-2.5 transition-all ${
+                  installTab === 'manual'
+                    ? 'bg-white text-brand-700 shadow-md shadow-slate-300/40'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>🛠️</span>
+                التثبيت اليدوي خطوة بخطوة
+              </button>
+              <button
+                type="button"
+                onClick={() => setInstallTab('tree')}
+                className={`flex items-center gap-2 rounded-xl px-5 py-2.5 transition-all ${
+                  installTab === 'tree'
+                    ? 'bg-white text-brand-700 shadow-md shadow-slate-300/40'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>📁</span>
+                هيكلية المسارات والملفات
+              </button>
+            </div>
+
+            {/* Tab 1: Smart Script */}
+            {installTab === 'script' && (
+              <div className="mt-6 animate-fade-up">
+                <div className="overflow-hidden rounded-3xl bg-slate-900 shadow-2xl ring-1 ring-white/10">
+                  <div className="flex items-center justify-between border-b border-white/10 bg-slate-950/60 px-5 py-3.5">
+                    <div className="flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full bg-rose-500/80" />
+                      <span className="h-3 w-3 rounded-full bg-amber-500/80" />
+                      <span className="h-3 w-3 rounded-full bg-emerald-500/80" />
+                      <span className="mr-2 text-xs font-bold text-slate-400">Terminal — التثبيت الذكي بأمر واحد</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={copyOneLiner}
+                      className="flex items-center gap-1.5 rounded-lg bg-emerald-500/20 px-3.5 py-1.5 text-xs font-extrabold text-emerald-300 ring-1 ring-emerald-500/30 transition-all hover:bg-emerald-500/30"
+                    >
+                      {copiedScript ? '✓ تم النسخ بنجاح!' : '📋 نسخ الأمر'}
+                    </button>
+                  </div>
+
+                  <div className="p-6">
+                    <p className="text-xs font-semibold text-slate-400">
+                      انسخ الأمر التالي وشغّله داخل موجه أوامر السيرفر (SSH Terminal):
+                    </p>
+                    <div
+                      dir="ltr"
+                      className="mt-3 flex items-center justify-between rounded-xl bg-slate-950 p-4 font-mono text-xs sm:text-sm text-emerald-300 ring-1 ring-white/10 overflow-x-auto"
+                    >
+                      <span>curl -fsSL https://jadallahkhaled.com/scripts/install_plugin.sh | bash</span>
+                    </div>
+
+                    <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 text-right">
+                      <div className="flex items-start gap-2.5 rounded-xl bg-white/5 p-3.5 ring-1 ring-white/10">
+                        <span className="text-emerald-400 font-bold">✓</span>
+                        <div className="text-xs">
+                          <p className="font-extrabold text-white">كشف المسار التلقائي</p>
+                          <p className="mt-0.5 text-slate-400">يبحث السكربت عن مجلد مودل القياسي (/var/www, /home, /opt) دون الحاجة لإدخاله يدوياً.</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2.5 rounded-xl bg-white/5 p-3.5 ring-1 ring-white/10">
+                        <span className="text-emerald-400 font-bold">✓</span>
+                        <div className="text-xs">
+                          <p className="font-extrabold text-white">إنشاء مجلد exammonitor</p>
+                          <p className="mt-0.5 text-slate-400">ينشئ المجلد في المسار السليم mod/quiz/accessrule/exammonitor ويستنسخ كود GitHub.</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2.5 rounded-xl bg-white/5 p-3.5 ring-1 ring-white/10">
+                        <span className="text-emerald-400 font-bold">✓</span>
+                        <div className="text-xs">
+                          <p className="font-extrabold text-white">ضبط الصلاحيات 755</p>
+                          <p className="mt-0.5 text-slate-400">يمنح تصاريح القراءة والتشغيل الصحيحة لمستخدم الويب (www-data / apache) تلقائياً.</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2.5 rounded-xl bg-white/5 p-3.5 ring-1 ring-white/10">
+                        <span className="text-emerald-400 font-bold">✓</span>
+                        <div className="text-xs">
+                          <p className="font-extrabold text-white">ترقية وتفعيل فورية</p>
+                          <p className="mt-0.5 text-slate-400">يشغل أداة ترقية مودل (admin/cli/upgrade.php) لتسجيل قاعدة الوصول وتفعيلها فوراً.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Tab 2: Manual Terminal Commands */}
+            {installTab === 'manual' && (
+              <div className="mt-6 animate-fade-up">
+                <Terminal lines={SITE.installCommands} />
+                <p className="mt-3 text-center text-xs text-slate-500">
+                  إذا كان مجلد مودل في مسار مخصص (مثال: cPanel)، استبدل المسار بالمسار الفعلي على خادمك قبل تشغيل الأوامر.
+                </p>
+              </div>
+            )}
+
+            {/* Tab 3: Path & File Tree */}
+            {installTab === 'tree' && (
+              <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2 animate-fade-up">
+                <div>
+                  <p className="mb-2 text-xs font-bold text-slate-600">مسار الإضافة داخل مودل:</p>
+                  <PathTree />
+                </div>
+                <div>
+                  <p className="mb-2 text-xs font-bold text-slate-600">الملفات والمجلدات الأساسية للإضافة:</p>
+                  <FileTree />
+                </div>
+              </div>
+            )}
           </div>
-          <div className="mt-8 text-center">
+
+          {/* Important Technical & Operating Notes */}
+          <div className="mx-auto mt-16 max-w-4xl">
+            <div className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm">
+              <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500 text-sm font-bold text-white shadow-md shadow-amber-500/30">💡</span>
+                <h3 className="text-base font-extrabold text-slate-800">ملاحظات تشغيلية هامة لإدارة مودل والمعلمين</h3>
+              </div>
+
+              <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 text-xs leading-relaxed">
+                <div className="rounded-xl bg-slate-50 p-4 border-r-2 border-brand-500">
+                  <p className="font-extrabold text-slate-800">🧩 التوافقية الشاملة:</p>
+                  <p className="mt-1 text-slate-600">
+                    الإضافة متوافقة مع إصدارات Moodle 3.9 و 3.10 و 3.11 وجميع إصدارات Moodle 4.x، وتعمل تلقائياً دون الحاجة لتعديل أي كود في نواة مودل.
+                  </p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-4 border-r-2 border-emerald-500">
+                  <p className="font-extrabold text-slate-800">🔒 خصوصية تامة بدون كاميرا أو مايكروفون:</p>
+                  <p className="mt-1 text-slate-600">
+                    لا تطلب الإضافة أي أذونات وصول للكاميرا أو الصوت، وتعتمد فقط على رصد السلوك والأحداث المشبوهة، مما يحمي خصوصية الطلبة ويوفر استهلاك البيانات.
+                  </p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-4 border-r-2 border-violet-500">
+                  <p className="font-extrabold text-slate-800">⚙️ كيفية التفعيل على الامتحان:</p>
+                  <p className="mt-1 text-slate-600">
+                    في إعدادات الاختبار بمودل: افتح تبويب <strong>«قيود إضافية على المحاولات»</strong> واختر <strong>«نعم»</strong> أمام خيار <strong>«مراقبة الامتحان الذكية»</strong>.
+                  </p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-4 border-r-2 border-amber-500">
+                  <p className="font-extrabold text-slate-800">🔑 الربط السري مع المنصة:</p>
+                  <p className="mt-1 text-slate-600">
+                    من إدارة الموقع في مودل: انتقل إلى (قواعد وصول الاختبارات &gt; مراقب الامتحانات) وضع رابط المنصة ومفتاح الحساب السري الخاص بك.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-10 text-center">
             <Link
               to="/register"
               className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-l from-brand-600 to-violet-600 px-8 py-3.5 text-sm font-extrabold text-white shadow-xl shadow-brand-600/30 transition-all hover:shadow-2xl hover:-translate-y-0.5 active:scale-[.98]"
@@ -417,7 +790,7 @@ export default function PublicSite() {
               </svg>
             </Link>
             <p className="mt-3 text-[11px] font-semibold text-slate-400">
-              بعد التسجيل ستجد دليلاً كاملاً خطوة بخطوة داخل حسابك مع متابعة التقدّم.
+              بعد التسجيل ستحصل على مفتاح الربط الخاص بك ودليل تفاعلي متكامل خطوة بخطوة.
             </p>
           </div>
         </div>
@@ -430,7 +803,7 @@ export default function PublicSite() {
             <span className="rounded-full bg-brand-50 px-3 py-1 text-xs font-bold text-brand-700 ring-1 ring-brand-100">الأسعار</span>
             <h2 className="mt-4 text-3xl font-extrabold text-slate-900">ابدأ مجاناً اليوم</h2>
             <p className="mt-3 text-slate-500">
-              جرّب المنصة بكامل ميزاتها لمدة 7 أيام، ثم فعّلها بمفتاح ترخيص.
+              جرّب المنصة بكامل ميزاتها لمدة 30 يوماً، ثم فعّلها بمفتاح ترخيص.
             </p>
           </div>
           <div className="mx-auto mt-12 grid max-w-4xl grid-cols-1 gap-5 md:grid-cols-2">
@@ -439,10 +812,10 @@ export default function PublicSite() {
               <h3 className="mt-4 text-xl font-extrabold text-slate-900">نسخة تجريبية</h3>
               <p className="mt-1 text-3xl font-extrabold text-slate-900">
                 مجاناً
-                <span className="text-sm font-semibold text-slate-400"> / 7 أيام</span>
+                <span className="text-sm font-semibold text-slate-400"> / 30 يوماً</span>
               </p>
               <ul className="mt-5 space-y-2.5 text-sm font-semibold text-slate-600">
-                {['كامل الميزات والرصد', 'معادلة الغش قابلة للتعديل', 'تقارير وبيانات غير محدودة', 'بدون بطاقة ائتمان'].map((li) => (
+                {['كامل الميزات والرصد والمحركات الأربعة', 'إجراءات الردع الآلية وتقليص الوقت والقفل', 'معادلة الغش قابلة للتعديل', 'تقارير وبيانات غير محدودة', 'بدون بطاقة ائتمان'].map((li) => (
                   <li key={li} className="flex items-center gap-2.5">
                     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M20 6 9 17l-5-5" /></svg>
@@ -451,8 +824,8 @@ export default function PublicSite() {
                   </li>
                 ))}
               </ul>
-              <Link to="/admin" className="mt-7 block rounded-xl bg-gradient-to-l from-brand-600 to-violet-600 py-3 text-center text-sm font-extrabold text-white shadow-lg shadow-brand-600/25 transition-all hover:shadow-xl hover:-translate-y-0.5 active:scale-[.98]">
-                ابدأ التجربة الآن
+              <Link to="/register" className="mt-7 block rounded-xl bg-gradient-to-l from-brand-600 to-violet-600 py-3 text-center text-sm font-extrabold text-white shadow-lg shadow-brand-600/25 transition-all hover:shadow-xl hover:-translate-y-0.5 active:scale-[.98]">
+                ابدأ التجربة المجانية (30 يوماً)
               </Link>
             </div>
             <div className="rounded-3xl bg-slate-900 p-7 text-white transition-all hover:shadow-2xl hover:-translate-y-1">
@@ -463,7 +836,7 @@ export default function PublicSite() {
                 <span className="text-sm font-semibold text-slate-400"> / للأسعار</span>
               </p>
               <ul className="mt-5 space-y-2.5 text-sm font-semibold text-slate-300">
-                {['استخدام تجاري بلا قيود', 'تحديثات مستقبلية', 'مفتاح خاص بموقعك', 'دعم مباشر'].map((li) => (
+                {['استخدام مؤسسي وتجاري بلا قيود', 'تحديثات مستمرة للإضافة والخادم', 'مفتاح خاص بكل مؤسسة تعليمية', 'دعم فني واستشاري مباشر'].map((li) => (
                   <li key={li} className="flex items-center gap-2.5">
                     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300">
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M20 6 9 17l-5-5" /></svg>

@@ -9,7 +9,7 @@ export default function Activation({ status, onChanged }) {
   const [busy, setBusy] = useState(false)
 
   const startTrial = async () => {
-    if (!window.confirm('بدء النسخة التجريبية لمدة 7 أيام؟')) return
+    if (!window.confirm('بدء النسخة التجريبية لمدة 30 يوماً؟')) return
     setBusy(true)
     setErr('')
     setNotice('')
@@ -65,7 +65,7 @@ export default function Activation({ status, onChanged }) {
           <p className="max-w-sm text-sm text-slate-500">
             {status?.status === 'trial'
               ? `النسخة التجريبية نشطة — متبقي ${status.remaining_days} يوم. أدخل مفتاح الترخيص للتفعيل الدائم.`
-              : 'ابدأ نسختك التجريبية المجانية لمدة 7 أيام، أو أدخل مفتاح الترخيص الخاص بك.'}
+              : 'ابدأ نسختك التجريبية المجانية لمدة 30 يوماً، أو أدخل مفتاح الترخيص الخاص بك.'}
           </p>
         </div>
 
@@ -101,7 +101,7 @@ export default function Activation({ status, onChanged }) {
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
                   <path d="M13 2 3 14h7l-1 8 11-12h-7l1-8Z" />
                 </svg>
-                ابدأ النسخة التجريبية 7 أيام
+                ابدأ النسخة التجريبية (30 يوماً مجاناً)
               </>
             )}
           </button>

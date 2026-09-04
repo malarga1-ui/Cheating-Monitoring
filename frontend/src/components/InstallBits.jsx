@@ -43,17 +43,15 @@ export function Terminal({ lines }) {
 // Visual folder tree of the standard Moodle plugin path (LTR)
 export function PathTree() {
   const rows = [
-    { depth: 0, label: 'home', highlight: false },
-    { depth: 1, label: 'luckhdvn', highlight: false },
-    { depth: 2, label: 'moodle.luckydraw.world', highlight: false, note: '← مجلد الموديل (الجذر)' },
-    { depth: 3, label: 'mod', highlight: false },
-    { depth: 4, label: 'quiz', highlight: false },
-    { depth: 5, label: 'accessrule', highlight: false },
-    { depth: 6, label: 'exammonitor', highlight: true, note: '← الإضافة توضع هنا' },
+    { depth: 0, label: '<moodle_root>', highlight: false, note: '← مجلد مودل الرئيسي (مثال: /var/www/moodle)' },
+    { depth: 1, label: 'mod', highlight: false },
+    { depth: 2, label: 'quiz', highlight: false },
+    { depth: 3, label: 'accessrule', highlight: false, note: '← مجلد قواعد وصول الاختبارات' },
+    { depth: 4, label: 'exammonitor', highlight: true, note: '← الإضافة تستقر هنا وتعمل تلقائياً' },
   ]
   return (
     <div dir="ltr" className="overflow-hidden rounded-2xl bg-slate-900 font-mono text-[12px] ring-1 ring-white/10">
-      <div className="border-b border-white/10 px-4 py-2.5 text-[11px] text-slate-400">/home/luckhdvn</div>
+      <div className="border-b border-white/10 px-4 py-2.5 text-[11px] text-slate-400">Standard Moodle Directory Tree</div>
       <div className="px-4 py-3 leading-relaxed">
         {rows.map((r) => (
           <div

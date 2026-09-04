@@ -7,21 +7,25 @@ export const SITE = {
   githubNote:
     'الإضافة تُحمَّل من GitHub وتوضع في المسار القياسي mod/quiz/accessrule/exammonitor داخل ملفات مودل — ثم تُحدَّث وتُفعَّل من إدارة الموقع.',
 
-  // أوامر التثبيت على خادم مودل — استبدل مسار مودل بمسارك إذا اختلف
+  // أوامر التثبيت على خادم مودل — تدعم السكربت الذكي أو التثبيت اليدوي القياسي
+  autoInstallCommand: 'curl -fsSL https://jadallahkhaled.com/scripts/install_plugin.sh | bash',
   installCommands: [
-    '# 1) الانتقال إلى مجلد إضافات الاختبارات في مودل (مسار قياسي)',
-    '#    استبدل مسار مودل إذا اختلف، مثال:',
-    '#    cd /var/www/moodle/mod/quiz/accessrule',
-    'cd /home/luckhdvn/moodle.luckydraw.world/mod/quiz/accessrule',
+    '# الطريقة الأولى (الموصى بها): التثبيت التلقائي الذكي بأمر واحد',
+    '# يتعرف السكربت تلقائياً على مسار مودل، ينشئ مجلد exammonitor، ويحدث قاعدة البيانات فوراً',
+    'curl -fsSL https://jadallahkhaled.com/scripts/install_plugin.sh | bash',
     '',
-    '# 2) تحميل الإضافة من GitHub (تنشئ مجلد exammonitor تلقائياً)',
+    '# الطريقة الثانية: التثبيت اليدوي خطوة بخطوة',
+    '# 1) الانتقال إلى مجلد قواعد وصول الاختبارات داخل مودل (استبدل المسار بمسار خادمك إذا اختلف):',
+    'cd /var/www/html/moodle/mod/quiz/accessrule',
+    '',
+    '# 2) استنساخ الإضافة من مستودع GitHub في مجلد exammonitor:',
     'git clone https://github.com/Jadallah1455/Exam-Monitor-Platform.git exammonitor',
     '',
-    '# 3) تحديث مودل لتثبيت الإضافة وتفعيلها',
-    'sudo -u www-data php /home/luckhdvn/moodle.luckydraw.world/admin/cli/upgrade.php',
+    '# 3) ضبط الصلاحيات القياسية:',
+    'chmod -R 755 exammonitor',
     '',
-    '# 4) التأكد من تثبيت الإضافة في مكانها الصحيح',
-    'ls /home/luckhdvn/moodle.luckydraw.world/mod/quiz/accessrule/exammonitor',
+    '# 4) ترقية وتفعيل الإضافة في نظام مودل عبر موجه الأوامر (أو افتح إدارة الموقع من المتصفح):',
+    'php /var/www/html/moodle/admin/cli/upgrade.php --non-interactive',
   ],
 
   // الفريق — ضع صورة كل عضو في مجلد public/team ثم اكتب اسم الملف هنا
