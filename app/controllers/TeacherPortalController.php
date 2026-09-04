@@ -426,11 +426,12 @@ final class TeacherPortalController
         Auth::requireTeacher();
         $accountId = Auth::accountId();
         $teacherId = Auth::teacherId();
+        $isAdmin   = Auth::isOwner();
 
         // Incrementally aggregate any pending events
         try { Aggregator::process(2000); } catch (\Throwable $e) {}
 
-        $ids = Teachers::courseIds($accountId, $teacherId);
+        $ids = $isAdmin ? self::allCourseIds($accountId) : Teachers::courseIds($accountId, $teacherId);
         $courseId = (int)($_GET['course_id'] ?? 0);
         $examId = (int)($_GET['exam_id'] ?? 0);
         $singleExam = null;
@@ -443,7 +444,7 @@ final class TeacherPortalController
                   WHERE (e.id = ? OR e.moodle_quiz_id = ?) AND (e.account_id = ? OR e.account_id = 0)",
                 [$accountId, $examId, $examId, $accountId]
             );
-            if (!empty($examRows) && Auth::teacherOwnsExam($accountId, $teacherId, $examRows[0])) {
+            if (!empty($examRows) && ($isAdmin || Auth::teacherOwnsExam($accountId, $teacherId, $examRows[0]))) {
                 $singleExam = [
                     'id'              => (int)$examRows[0]['id'],
                     'moodle_quiz_id'  => (int)$examRows[0]['moodle_quiz_id'],
@@ -461,17 +462,26 @@ final class TeacherPortalController
             $examRows = [$singleExam];
         } else {
             if ($ids === []) {
-                Response::ok(self::emptyAnalytics());
-                return;
+                $ids = self::allCourseIds($accountId);
             }
-            $in = self::safeInts($ids);
+            $in = !empty($ids) ? self::safeInts($ids) : '0';
+            $courseFilter = ($isAdmin && $courseId === 0) ? "" : " AND e.moodle_course_id IN ($in)";
             $examRows = Database::fetchAll(
                 "SELECT e.id, e.moodle_quiz_id, e.name, e.status, c.name AS course_name
                    FROM exams e
                    LEFT JOIN courses c ON c.moodle_course_id = e.moodle_course_id AND (c.account_id = e.account_id OR c.account_id = ? OR c.account_id = 0)
-                  WHERE (e.account_id = ? OR e.account_id = 0) AND e.moodle_course_id IN ($in)",
+                  WHERE (e.account_id = ? OR e.account_id = 0) {$courseFilter}",
                 [$accountId, $accountId]
             );
+            if (empty($examRows)) {
+                $examRows = Database::fetchAll(
+                    "SELECT e.id, e.moodle_quiz_id, e.name, e.status, c.name AS course_name
+                       FROM exams e
+                       LEFT JOIN courses c ON c.moodle_course_id = e.moodle_course_id AND (c.account_id = e.account_id OR c.account_id = ? OR c.account_id = 0)
+                      WHERE (e.account_id = ? OR e.account_id = 0)",
+                    [$accountId, $accountId]
+                );
+            }
         }
 
         $examIds = array_map(fn($r) => (int)$r['id'], $examRows);
@@ -587,8 +597,49 @@ final class TeacherPortalController
               WHERE (ss.exam_id IN ($ein) OR ss.session_id IN (SELECT session_id FROM events WHERE moodle_quiz_id IN (SELECT moodle_quiz_id FROM exams WHERE id IN ($ein))))
               GROUP BY ss.student_id
               ORDER BY risk_score DESC
-              LIMIT 20"
+              LIMIT 50"
         );
+
+        // Fallback: If topRisky is empty, populate from events table
+        if (empty($topRisky)) {
+            $evStudents = Database::fetchAll(
+                "SELECT ev.moodle_user_id AS student_id,
+                        COUNT(*) AS event_count,
+                        COALESCE(MAX(s.fullname), 
+                                 NULLIF(JSON_UNQUOTE(JSON_EXTRACT(MAX(ev.payload), '$.moodle.student.name')), ''),
+                                 NULLIF(JSON_UNQUOTE(JSON_EXTRACT(MAX(ev.payload), '$.student_name')), ''),
+                                 CONCAT('طالب #', ev.moodle_user_id)) AS fullname,
+                        COALESCE(MAX(s.username), 
+                                 NULLIF(JSON_UNQUOTE(JSON_EXTRACT(MAX(ev.payload), '$.moodle.student.username')), ''),
+                                 NULLIF(JSON_UNQUOTE(JSON_EXTRACT(MAX(ev.payload), '$.username')), ''),
+                                 '') AS username,
+                        COALESCE(MAX(e.name), 'اختبار') AS exam_name,
+                        MAX(ev.moodle_quiz_id) AS exam_id,
+                        'safe' AS risk_level,
+                        0 AS risk_score,
+                        0 AS same_ip_student_count,
+                        0 AS same_ip_risk_score,
+                        0 AS ai_suspect_score,
+                        0 AS similarity_max_score,
+                        SUM(CASE WHEN ev.event_type = 'tab_hidden' THEN 1 ELSE 0 END) AS tab_hidden_count,
+                        SUM(CASE WHEN ev.event_type = 'paste' THEN 1 ELSE 0 END) AS paste_count,
+                        SUM(CASE WHEN ev.event_type = 'copy' THEN 1 ELSE 0 END) AS copy_count,
+                        SUM(CASE WHEN ev.event_type = 'devtools_opened' THEN 1 ELSE 0 END) AS devtools_count
+                 FROM events ev
+                 LEFT JOIN students s ON (s.moodle_user_id = ev.moodle_user_id OR s.id = ev.moodle_user_id)
+                 LEFT JOIN exams e ON (e.moodle_quiz_id = ev.moodle_quiz_id OR e.id = ev.moodle_quiz_id)
+                 WHERE (ev.account_id = ? OR ev.account_id = 0)
+                   AND ev.moodle_quiz_id IN (SELECT e2.moodle_quiz_id FROM exams e2 WHERE (e2.id IN ($ein) OR e2.moodle_quiz_id IN ($ein)))
+                   AND ev.moodle_user_id > 0
+                 GROUP BY ev.moodle_user_id
+                 ORDER BY event_count DESC
+                 LIMIT 50",
+                [$accountId]
+            );
+            if (!empty($evStudents)) {
+                $topRisky = $evStudents;
+            }
+        }
 
         Response::ok([
             'totals' => [

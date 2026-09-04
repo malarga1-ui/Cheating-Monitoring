@@ -1669,8 +1669,9 @@ function CourseWorkspace({ courses }) {
 }
 
 /* ─── LIVE EXAM DASHBOARD TAB ────────────────────────────── */
+/* ─── LIVE EXAM DASHBOARD TAB ────────────────────────────── */
 function LiveExamDashboard({ activeExams = [] }) {
-  const [selectedExamId, setSelectedExamId] = useState(null)
+  const [selectedExamId, setSelectedExamId] = useState('')
   const [allExams, setAllExams] = useState([])
 
   // Load all exams once and refresh every 10s so teacher can select any exam
@@ -1686,88 +1687,84 @@ function LiveExamDashboard({ activeExams = [] }) {
   }, [])
 
   // Auto-selection logic:
-  // 1. If there is an active exam with students, prioritize it
-  // 2. Otherwise auto-select the latest exam from teacher's courses so the dashboard is live-ready
+  // If an exam becomes active with live traffic and nothing is selected yet, switch to it
   useEffect(() => {
-    if (activeExams.length > 0) {
-      if (!selectedExamId || !activeExams.some(e => String(e.id) === String(selectedExamId))) {
-        setSelectedExamId(activeExams[0].id)
-      }
-    } else if (allExams.length > 0 && !selectedExamId) {
-      setSelectedExamId(allExams[0].id)
+    if (activeExams.length > 0 && selectedExamId === '') {
+      setSelectedExamId(String(activeExams[0].id))
     }
-  }, [activeExams, allExams, selectedExamId])
+  }, [activeExams, selectedExamId])
 
-  const effectiveExamId = selectedExamId || (activeExams.length > 0 ? activeExams[0].id : (allExams.length > 0 ? allExams[0].id : null))
-  const isCurrentlyStreaming = activeExams.length > 0 && activeExams.some(e => String(e.id) === String(effectiveExamId))
-  const displayExams = activeExams.length > 0 ? activeExams : allExams
+  const effectiveExamId = selectedExamId ? selectedExamId : null
+  const isCurrentlyStreaming = activeExams.length > 0 && (
+    effectiveExamId
+      ? activeExams.some(e => String(e.id) === String(effectiveExamId))
+      : true
+  )
+  const displayExams = allExams.length > 0 ? allExams : activeExams
 
   return (
     <div className="space-y-6">
       {/* Real-time exam status & selector banner */}
-      {displayExams.length > 0 && (
-        <div className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4 shadow-sm transition-all ${
-          isCurrentlyStreaming
-            ? 'border-emerald-300 bg-gradient-to-r from-emerald-50 via-white to-teal-50/70 ring-1 ring-emerald-200'
-            : 'border-sky-300 bg-gradient-to-r from-sky-50 via-white to-indigo-50/70 ring-1 ring-sky-200'
-        }`}>
-          <div className="flex items-center gap-3">
-            <span className="relative flex h-3.5 w-3.5">
-              <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${
-                isCurrentlyStreaming ? 'bg-emerald-400' : 'bg-sky-400'
-              }`} />
-              <span className={`relative inline-flex h-3.5 w-3.5 rounded-full ${
-                isCurrentlyStreaming ? 'bg-emerald-500' : 'bg-sky-500'
-              }`} />
-            </span>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className={`text-xs font-black tracking-wide ${
-                  isCurrentlyStreaming ? 'text-emerald-900' : 'text-sky-900'
-                }`}>
-                  {isCurrentlyStreaming ? '🔴 بث مباشر نشط الآن' : '📡 وضع الاستعداد للبث اللحظي (Standby)'}
-                </span>
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
-                  isCurrentlyStreaming ? 'bg-emerald-100 text-emerald-800' : 'bg-sky-100 text-sky-800'
-                }`}>
-                  {isCurrentlyStreaming ? `نشط (${activeExams.length})` : 'جاهز لاستقبال الطلاب'}
-                </span>
-              </div>
-              <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
-                {isCurrentlyStreaming
-                  ? 'يتم تحديث نشاط الطلاب وأحداث الغش كل 3 ثوانٍ مباشرة.'
-                  : 'بمجرد أن يدخل أي طالب الامتحان، ستتدفق إشاراته وأحداثه فوراً إلى هذه الشاشة.'}
-              </p>
-            </div>
-          </div>
-
-          {displayExams.length > 1 && (
+      <div className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4 shadow-sm transition-all ${
+        isCurrentlyStreaming
+          ? 'border-emerald-300 bg-gradient-to-r from-emerald-50 via-white to-teal-50/70 ring-1 ring-emerald-200'
+          : 'border-sky-300 bg-gradient-to-r from-sky-50 via-white to-indigo-50/70 ring-1 ring-sky-200'
+      }`}>
+        <div className="flex items-center gap-3">
+          <span className="relative flex h-3.5 w-3.5 shrink-0">
+            <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${
+              isCurrentlyStreaming ? 'bg-emerald-400' : 'bg-sky-400'
+            }`} />
+            <span className={`relative inline-flex h-3.5 w-3.5 rounded-full ${
+              isCurrentlyStreaming ? 'bg-emerald-500' : 'bg-sky-500'
+            }`} />
+          </span>
+          <div>
             <div className="flex items-center gap-2">
-              <label className="text-xs font-bold text-slate-600 shrink-0">الامتحان المعروض:</label>
-              <select
-                value={effectiveExamId || ''}
-                onChange={(e) => setSelectedExamId(e.target.value)}
-                className={`rounded-xl border bg-white px-3.5 py-2 text-xs font-extrabold outline-none shadow-sm transition-all ${
-                  isCurrentlyStreaming
-                    ? 'border-emerald-300 text-slate-700 hover:border-emerald-400'
-                    : 'border-sky-300 text-slate-700 hover:border-sky-400'
-                }`}
-              >
-                {displayExams.map(ex => (
-                  <option key={ex.id} value={ex.id}>
-                    {ex.name} ({ex.course_name || 'مساق'})
-                  </option>
-                ))}
-              </select>
+              <span className={`text-xs font-black tracking-wide ${
+                isCurrentlyStreaming ? 'text-emerald-900' : 'text-sky-900'
+              }`}>
+                {isCurrentlyStreaming ? '🔴 بث مباشر نشط الآن' : '📊 نظرة شاملة وتحليلات (في انتظار الطلاب)'}
+              </span>
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
+                isCurrentlyStreaming ? 'bg-emerald-100 text-emerald-800' : 'bg-sky-100 text-sky-800'
+              }`}>
+                {isCurrentlyStreaming ? `نشط (${activeExams.length})` : 'جاهز لاستقبال الطلاب'}
+              </span>
             </div>
-          )}
+            <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
+              {isCurrentlyStreaming
+                ? 'يتم رصد نشاط الطلاب وأحداث الغش كل 3 ثوانٍ مباشرة وبشكل حي.'
+                : 'يتم عرض إحصائيات ونتائج الطلاب المحفوظة، وسيبدأ البث اللحظي فوراً عند تقديم أي امتحان.'}
+            </p>
+          </div>
         </div>
-      )}
+
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-bold text-slate-600 shrink-0">الامتحان المعروض:</label>
+          <select
+            value={selectedExamId}
+            onChange={(e) => setSelectedExamId(e.target.value)}
+            className={`rounded-xl border bg-white px-3.5 py-2 text-xs font-extrabold outline-none shadow-sm transition-all cursor-pointer ${
+              isCurrentlyStreaming
+                ? 'border-emerald-300 text-slate-700 hover:border-emerald-400'
+                : 'border-sky-300 text-slate-700 hover:border-sky-400'
+            }`}
+          >
+            <option value="">📊 نظرة عامة شاملة (كافة الامتحانات)</option>
+            {displayExams.map(ex => (
+              <option key={ex.id} value={ex.id}>
+                {ex.name} ({ex.course_name || 'مساق'})
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       <TeacherAnalytics
         examId={effectiveExamId}
         isLiveDashboard={true}
-        hasActiveExam={Boolean(effectiveExamId || activeExams.length > 0)}
+        hasActiveExam={Boolean(isCurrentlyStreaming)}
       />
     </div>
   )
