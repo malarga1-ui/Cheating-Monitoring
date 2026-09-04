@@ -474,7 +474,7 @@ final class TeacherPortalController
                 (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss
                    WHERE ss.exam_id IN ($ein) AND (ss.account_id = ? OR ss.account_id = 0) AND ss.risk_level IN ('high','critical')) AS suspicious_count,
                 (SELECT COUNT(*) FROM exams e3 WHERE e3.id IN ($ein) AND (e3.status = 'active' OR e3.last_event_at >= (UTC_TIMESTAMP() - INTERVAL 2 HOUR) OR e3.last_event_at >= (NOW() - INTERVAL 2 HOUR))) AS active_exams",
-            [$accountId, $accountId, $accountId, $accountId]
+            [$accountId, $accountId, $accountId, $accountId, $accountId]
         );
 
         // Fallback: If sessions_count is 0 but events exist, populate from events table
