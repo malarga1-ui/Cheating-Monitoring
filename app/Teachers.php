@@ -65,7 +65,18 @@ final class Teachers
             'SELECT moodle_course_id FROM course_teachers WHERE (account_id = ? OR account_id = 0) AND moodle_teacher_id = ?',
             [$accountId, $teacherId]
         );
-        return array_values(array_unique(array_filter(array_map(fn($r) => (int)$r['moodle_course_id'], $rows))));
+        $ids = array_values(array_unique(array_filter(array_map(fn($r) => (int)$r['moodle_course_id'], $rows))));
+
+        // Fallback: If course_teachers is empty, also check exams table where this teacher is assigned
+        if (empty($ids) && $teacherId > 0) {
+            $examRows = Database::fetchAll(
+                'SELECT DISTINCT moodle_course_id FROM exams WHERE (account_id = ? OR account_id = 0) AND (moodle_teacher_id = ? OR teacher_name IN (SELECT username FROM teachers WHERE moodle_teacher_id = ?))',
+                [$accountId, $teacherId, $teacherId]
+            );
+            $ids = array_values(array_unique(array_filter(array_map(fn($r) => (int)$r['moodle_course_id'], $examRows))));
+        }
+
+        return $ids;
     }
 
     /**

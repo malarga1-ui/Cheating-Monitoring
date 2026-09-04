@@ -1411,13 +1411,15 @@ final class TeacherPortalController
     /* ── All Students across teacher's exams ──────────────────────── */
 
     /** GET /api/teacher/students — all students across teacher's exams. */
+    /** GET /api/teacher/students — all students across teacher's exams. */
     public static function students(): void
     {
         Auth::requireTeacher();
         $accountId = Auth::accountId();
         $teacherId = Auth::teacherId();
+        $isAdmin   = Auth::isOwner();
 
-        $ids = Teachers::courseIds($accountId, $teacherId);
+        $ids = $isAdmin ? self::allCourseIds($accountId) : Teachers::courseIds($accountId, $teacherId);
         $courseId = (int)($_GET['course_id'] ?? 0);
         if ($courseId > 0 && in_array($courseId, $ids, true)) {
             $ids = [$courseId];
@@ -1428,6 +1430,11 @@ final class TeacherPortalController
         $search = trim((string)($_GET['q'] ?? ''));
         $risk   = (string)($_GET['risk'] ?? '');
         $sort   = (string)($_GET['sort'] ?? 'risk_desc');
+
+        $courseFilterExams = $isAdmin && $courseId === 0 ? "" : " AND moodle_course_id IN ($in)";
+        $courseFilterJoin  = $isAdmin && $courseId === 0 ? "" : " AND cs.moodle_course_id IN ($in)";
+        $courseFilterE2    = $isAdmin && $courseId === 0 ? "" : " AND e2.moodle_course_id IN ($in)";
+        $courseFilterE3    = $isAdmin && $courseId === 0 ? "" : " AND e3.moodle_course_id IN ($in)";
 
         $rows = Database::fetchAll(
             "SELECT s.id AS student_id, s.moodle_user_id, s.fullname, s.username,
@@ -1447,13 +1454,31 @@ final class TeacherPortalController
                     MIN(ss.first_event_at) AS first_seen,
                     MAX(ss.last_event_at) AS last_seen
                FROM students s
-               LEFT JOIN session_summaries ss ON ss.student_id = s.id AND ss.account_id = s.account_id
-                    AND ss.exam_id IN (SELECT id FROM exams WHERE account_id = ? AND moodle_course_id IN ($in))
-              WHERE s.account_id = ?
-                AND IF(s.moodle_user_id > 0, s.moodle_user_id, s.id) IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = ? AND cs.moodle_course_id IN ($in))
-                AND s.username NOT IN (SELECT username FROM teachers WHERE account_id = ? AND username != '')
+               LEFT JOIN session_summaries ss ON (ss.student_id = s.id OR ss.student_id = s.moodle_user_id)
+                    AND (ss.account_id = s.account_id OR ss.account_id = 0)
+                    AND ss.exam_id IN (
+                        SELECT id FROM exams WHERE (account_id = ? OR account_id = 0) {$courseFilterExams}
+                        UNION
+                        SELECT moodle_quiz_id FROM exams WHERE (account_id = ? OR account_id = 0) {$courseFilterExams}
+                    )
+              WHERE (s.account_id = ? OR s.account_id = 0)
+                AND (
+                    s.moodle_user_id IN (SELECT cs.student_id FROM course_students cs WHERE (cs.account_id = ? OR cs.account_id = 0) {$courseFilterJoin})
+                    OR s.id IN (SELECT cs.student_id FROM course_students cs WHERE (cs.account_id = ? OR cs.account_id = 0) {$courseFilterJoin})
+                    OR EXISTS (
+                        SELECT 1 FROM session_summaries ss2
+                        JOIN exams e2 ON (e2.id = ss2.exam_id OR e2.moodle_quiz_id = ss2.exam_id)
+                        WHERE (ss2.student_id = s.id OR ss2.student_id = s.moodle_user_id) {$courseFilterE2}
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM events ev
+                        JOIN exams e3 ON (e3.moodle_quiz_id = ev.moodle_quiz_id OR e3.id = ev.moodle_quiz_id)
+                        WHERE (ev.moodle_user_id = s.moodle_user_id OR ev.moodle_user_id = s.id) {$courseFilterE3}
+                    )
+                )
+                AND s.username NOT IN (SELECT username FROM teachers WHERE (account_id = ? OR account_id = 0) AND username != '')
               GROUP BY s.id, s.moodle_user_id, s.fullname, s.username",
-            [$accountId, $accountId, $accountId, $accountId]
+            [$accountId, $accountId, $accountId, $accountId, $accountId, $accountId]
         );
 
         if ($search !== '') {
@@ -1488,12 +1513,30 @@ final class TeacherPortalController
                 COUNT(DISTINCT CASE WHEN ss.same_ip_student_count > 0 THEN s.id END) AS network_flagged,
                 COUNT(DISTINCT CASE WHEN ss.similarity_max_score >= 50 THEN s.id END) AS sim_flagged
                FROM students s
-               LEFT JOIN session_summaries ss ON ss.student_id = s.id AND ss.account_id = s.account_id
-                    AND ss.exam_id IN (SELECT id FROM exams WHERE account_id = ? AND moodle_course_id IN ($in))
-              WHERE s.account_id = ?
-                AND IF(s.moodle_user_id > 0, s.moodle_user_id, s.id) IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = ? AND cs.moodle_course_id IN ($in))
-                AND s.username NOT IN (SELECT username FROM teachers WHERE account_id = ? AND username != '')",
-            [$accountId, $accountId, $accountId, $accountId]
+               LEFT JOIN session_summaries ss ON (ss.student_id = s.id OR ss.student_id = s.moodle_user_id)
+                    AND (ss.account_id = s.account_id OR ss.account_id = 0)
+                    AND ss.exam_id IN (
+                        SELECT id FROM exams WHERE (account_id = ? OR account_id = 0) {$courseFilterExams}
+                        UNION
+                        SELECT moodle_quiz_id FROM exams WHERE (account_id = ? OR account_id = 0) {$courseFilterExams}
+                    )
+              WHERE (s.account_id = ? OR s.account_id = 0)
+                AND (
+                    s.moodle_user_id IN (SELECT cs.student_id FROM course_students cs WHERE (cs.account_id = ? OR cs.account_id = 0) {$courseFilterJoin})
+                    OR s.id IN (SELECT cs.student_id FROM course_students cs WHERE (cs.account_id = ? OR cs.account_id = 0) {$courseFilterJoin})
+                    OR EXISTS (
+                        SELECT 1 FROM session_summaries ss2
+                        JOIN exams e2 ON (e2.id = ss2.exam_id OR e2.moodle_quiz_id = ss2.exam_id)
+                        WHERE (ss2.student_id = s.id OR ss2.student_id = s.moodle_user_id) {$courseFilterE2}
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM events ev
+                        JOIN exams e3 ON (e3.moodle_quiz_id = ev.moodle_quiz_id OR e3.id = ev.moodle_quiz_id)
+                        WHERE (ev.moodle_user_id = s.moodle_user_id OR ev.moodle_user_id = s.id) {$courseFilterE3}
+                    )
+                )
+                AND s.username NOT IN (SELECT username FROM teachers WHERE (account_id = ? OR account_id = 0) AND username != '')",
+            [$accountId, $accountId, $accountId, $accountId, $accountId, $accountId]
         );
 
         Response::ok([
@@ -1535,36 +1578,120 @@ final class TeacherPortalController
         Auth::requireTeacher();
         $accountId = Auth::accountId();
         $teacherId = Auth::teacherId();
+        $isAdmin = Auth::isOwner();
 
-        $ids = Teachers::courseIds($accountId, $teacherId);
-        if ($ids === []) { Response::error('لا توجد بيانات', 404); return; }
-        $in = self::safeInts($ids);
+        $ids = $isAdmin ? self::allCourseIds($accountId) : Teachers::courseIds($accountId, $teacherId);
+        if (empty($ids) && $teacherId > 0) {
+            $examCourses = Database::fetchAll(
+                'SELECT DISTINCT moodle_course_id FROM exams WHERE (account_id = ? OR account_id = 0) AND (moodle_teacher_id = ? OR teacher_name IN (SELECT username FROM teachers WHERE moodle_teacher_id = ?))',
+                [$accountId, $teacherId, $teacherId]
+            );
+            $ids = array_values(array_unique(array_filter(array_map(fn($r) => (int)$r['moodle_course_id'], $examCourses))));
+        }
+        if (empty($ids)) {
+            $ids = self::allCourseIds($accountId);
+        }
+        $in = !empty($ids) ? self::safeInts($ids) : '0';
 
+        // 1. Fetch student by primary id OR moodle_user_id
         $student = Database::fetchOne(
             "SELECT s.id, s.fullname, s.username, s.moodle_user_id
                FROM students s
-              WHERE (s.id = ? OR s.moodle_user_id = ?) AND s.account_id = ?
-              AND (
-                EXISTS (
-                  SELECT 1 FROM session_summaries ss
-                  JOIN exams e ON e.id = ss.exam_id
-                  WHERE ss.student_id = s.id AND ss.account_id = s.account_id AND e.moodle_course_id IN ($in)
-                )
-                OR EXISTS (
-                  SELECT 1 FROM course_students cs
-                  WHERE (cs.student_id = s.moodle_user_id OR cs.student_id = s.id) AND cs.account_id = s.account_id AND cs.moodle_course_id IN ($in)
-                )
-                OR EXISTS (
-                  SELECT 1 FROM events ev
-                  WHERE ev.moodle_user_id = s.moodle_user_id AND ev.account_id = s.account_id AND ev.moodle_course_id IN ($in)
-                )
-              )",
-            [$studentId, $studentId, $accountId]
+              WHERE (s.id = ? OR s.moodle_user_id = ?) AND (s.account_id = ? OR s.account_id = 0)
+              ORDER BY (s.account_id = ?) DESC LIMIT 1",
+            [$studentId, $studentId, $accountId, $accountId]
         );
-        if (!$student) { Response::error('الطالب غير موجود أو غير مسجل في مساقاتك', 404); return; }
+
+        // Fallback: discover student from events or session_summaries if not in students table
+        if (!$student) {
+            $evStudent = Database::fetchOne(
+                "SELECT DISTINCT ev.moodle_user_id,
+                                 COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(ev.payload, '$.moodle.student.name')), ''),
+                                          NULLIF(JSON_UNQUOTE(JSON_EXTRACT(ev.payload, '$.student_name')), ''),
+                                          '') AS fullname,
+                                 COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(ev.payload, '$.moodle.student.username')), ''),
+                                          NULLIF(JSON_UNQUOTE(JSON_EXTRACT(ev.payload, '$.username')), ''),
+                                          '') AS username
+                 FROM events ev
+                 WHERE (ev.moodle_user_id = ? OR ev.session_id LIKE ?) AND (ev.account_id = ? OR ev.account_id = 0)
+                 ORDER BY ev.id DESC LIMIT 1",
+                [$studentId, "%$studentId%", $accountId]
+            );
+            if ($evStudent && !empty($evStudent['moodle_user_id'])) {
+                $mUid = (int)$evStudent['moodle_user_id'];
+                $sName = !empty($evStudent['fullname']) ? $evStudent['fullname'] : ('طالب #' . $mUid);
+                $sUser = !empty($evStudent['username']) ? $evStudent['username'] : ('student_' . $mUid);
+                try {
+                    Database::execute(
+                        "INSERT INTO students (account_id, moodle_user_id, fullname, username)
+                         VALUES (?, ?, ?, ?)
+                         ON DUPLICATE KEY UPDATE fullname = VALUES(fullname), username = VALUES(username)",
+                        [$accountId, $mUid, $sName, $sUser]
+                    );
+                    $newId = (int)Database::lastInsertId();
+                } catch (\Throwable $e) {
+                    $newId = $mUid;
+                }
+                $student = [
+                    'id'             => $newId > 0 ? $newId : $mUid,
+                    'fullname'       => $sName,
+                    'username'       => $sUser,
+                    'moodle_user_id' => $mUid,
+                ];
+            }
+        }
+
+        if (!$student) {
+            Response::error('الطالب غير موجود', 404);
+            return;
+        }
 
         $actualStudentId = (int)$student['id'];
         $moodleUserId = (int)$student['moodle_user_id'];
+
+        // Enforce teacher course ownership (admin bypasses)
+        if (!$isAdmin && !empty($ids)) {
+            $hasAccess = Database::fetchOne(
+                "SELECT 1 FROM (
+                    SELECT 1 FROM session_summaries ss
+                    JOIN exams e ON (e.id = ss.exam_id OR e.moodle_quiz_id = ss.exam_id)
+                    WHERE (ss.student_id = ? OR ss.student_id = ?) AND (ss.account_id = ? OR ss.account_id = 0) AND e.moodle_course_id IN ($in)
+                    UNION ALL
+                    SELECT 1 FROM course_students cs
+                    WHERE (cs.student_id = ? OR cs.student_id = ?) AND (cs.account_id = ? OR cs.account_id = 0) AND cs.moodle_course_id IN ($in)
+                    UNION ALL
+                    SELECT 1 FROM events ev
+                    JOIN exams e2 ON (e2.moodle_quiz_id = ev.moodle_quiz_id OR e2.id = ev.moodle_quiz_id)
+                    WHERE (ev.moodle_user_id = ? OR ev.moodle_user_id = ?) AND (ev.account_id = ? OR ev.account_id = 0) AND e2.moodle_course_id IN ($in)
+                    UNION ALL
+                    SELECT 1 FROM answer_records ar
+                    JOIN exams e3 ON (e3.id = ar.exam_id OR e3.moodle_quiz_id = ar.exam_id)
+                    WHERE (ar.student_id = ? OR ar.student_id = ?) AND (ar.account_id = ? OR ar.account_id = 0) AND e3.moodle_course_id IN ($in)
+                ) t LIMIT 1",
+                [
+                    $actualStudentId, $moodleUserId, $accountId,
+                    $actualStudentId, $moodleUserId, $accountId,
+                    $actualStudentId, $moodleUserId, $accountId,
+                    $actualStudentId, $moodleUserId, $accountId,
+                ]
+            );
+            if (!$hasAccess) {
+                $studentExams = Database::fetchAll(
+                    "SELECT DISTINCT e.moodle_course_id FROM session_summaries ss
+                     JOIN exams e ON (e.id = ss.exam_id OR e.moodle_quiz_id = ss.exam_id)
+                     WHERE (ss.student_id = ? OR ss.student_id = ?) AND (ss.account_id = ? OR ss.account_id = 0)",
+                    [$actualStudentId, $moodleUserId, $accountId]
+                );
+                $stCourseIds = array_map(fn($r) => (int)$r['moodle_course_id'], $studentExams);
+                $common = array_intersect($ids, $stCourseIds);
+                if (empty($common) && !empty($studentExams)) {
+                    Response::error('الطالب غير مسجل في مساقاتك', 404);
+                    return;
+                }
+            }
+        }
+
+        $courseFilter = $isAdmin ? "" : " AND e.moodle_course_id IN ($in)";
 
         $sessions = Database::fetchAll(
             "SELECT ss.session_id, ss.exam_id, ss.ip_address, e.name AS exam_name, e.moodle_course_id,
@@ -1578,7 +1705,7 @@ final class TeacherPortalController
                FROM session_summaries ss
                JOIN exams e ON (e.id = ss.exam_id OR e.moodle_quiz_id = ss.exam_id)
                LEFT JOIN courses c ON c.moodle_course_id = e.moodle_course_id AND (c.account_id = e.account_id OR c.account_id = 0)
-              WHERE (ss.student_id = ? OR ss.student_id = ?) AND (ss.account_id = ? OR ss.account_id = 0) AND e.moodle_course_id IN ($in)
+              WHERE (ss.student_id = ? OR ss.student_id = ?) AND (ss.account_id = ? OR ss.account_id = 0) {$courseFilter}
               ORDER BY ss.first_event_at DESC",
             [$actualStudentId, $moodleUserId, $accountId]
         );
@@ -1661,7 +1788,7 @@ final class TeacherPortalController
                 MAX(ss.last_event_at) AS last_seen
                FROM session_summaries ss
                JOIN exams e ON (e.id = ss.exam_id OR e.moodle_quiz_id = ss.exam_id)
-              WHERE (ss.student_id = ? OR ss.student_id = ?) AND (ss.account_id = ? OR ss.account_id = 0) AND e.moodle_course_id IN ($in)",
+              WHERE (ss.student_id = ? OR ss.student_id = ?) AND (ss.account_id = ? OR ss.account_id = 0) {$courseFilter}",
             [$actualStudentId, $moodleUserId, $accountId]
         );
 
@@ -1686,7 +1813,7 @@ final class TeacherPortalController
                    ) latest ON ar.id = latest.max_id
                    JOIN exams e ON (e.id = ar.exam_id OR e.moodle_quiz_id = ar.exam_id)
                    LEFT JOIN students st_p ON (st_p.id = ar.similarity_with_student_id OR st_p.moodle_user_id = ar.similarity_with_student_id)
-                  WHERE (ar.student_id = ? OR ar.student_id = ?) AND (ar.account_id = ? OR ar.account_id = 0) AND e.moodle_course_id IN ($in)
+                  WHERE (ar.student_id = ? OR ar.student_id = ?) AND (ar.account_id = ? OR ar.account_id = 0) {$courseFilter}
                   ORDER BY ar.created_at DESC
                   LIMIT 100",
                 [$actualStudentId, $moodleUserId, $accountId, $actualStudentId, $moodleUserId, $accountId]
@@ -1708,7 +1835,7 @@ final class TeacherPortalController
                           GROUP BY question_id
                        ) latest ON ar.id = latest.max_id
                        JOIN exams e ON (e.id = ar.exam_id OR e.moodle_quiz_id = ar.exam_id)
-                      WHERE (ar.student_id = ? OR ar.student_id = ?) AND (ar.account_id = ? OR ar.account_id = 0) AND e.moodle_course_id IN ($in)
+                      WHERE (ar.student_id = ? OR ar.student_id = ?) AND (ar.account_id = ? OR ar.account_id = 0) {$courseFilter}
                       ORDER BY ar.created_at DESC
                       LIMIT 100",
                     [$actualStudentId, $moodleUserId, $accountId, $actualStudentId, $moodleUserId, $accountId]
@@ -1787,9 +1914,9 @@ final class TeacherPortalController
         $clipboardEvents = Database::fetchAll(
             "SELECT ev.id, ev.event_type, ev.event_time, ev.session_id, ev.payload
              FROM events ev
-             JOIN exams e ON (e.moodle_quiz_id = ev.moodle_quiz_id OR e.id = ev.moodle_quiz_id)
+             LEFT JOIN exams e ON (e.moodle_quiz_id = ev.moodle_quiz_id OR e.id = ev.moodle_quiz_id)
              WHERE (ev.moodle_user_id = ? OR ev.moodle_user_id = ?) AND (ev.account_id = ? OR ev.account_id = 0)
-               AND e.moodle_course_id IN ($in)
+               {$courseFilter}
                AND ev.event_type IN ('copy', 'paste', 'cut')
              ORDER BY ev.event_time DESC
              LIMIT 100",

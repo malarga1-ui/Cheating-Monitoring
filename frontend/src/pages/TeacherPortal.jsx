@@ -1193,16 +1193,48 @@ function StudentAIForensicReport({ studentId, initialReport, studentName, sessio
 function StudentDetail() {
   const { id } = useParams()
   const [data, setData] = useState(null)
+  const [error, setError] = useState(null)
   const navigate = useNavigate()
 
   useEffect(() => {
+    let active = true
     function load() {
-      api.get(`/api/teacher/students/${id}`).then(setData).catch(() => {})
+      api.get(`/api/teacher/students/${id}`)
+        .then(res => {
+          if (active) {
+            setData(res)
+            setError(null)
+          }
+        })
+        .catch(err => {
+          if (active) {
+            setError(err?.message || 'تعذر تحميل بيانات الطالب أو لا توجد صلاحية للوصول')
+          }
+        })
     }
     load()
-    const timer = setInterval(load, 3000)
-    return () => clearInterval(timer)
+    const timer = setInterval(load, 5000)
+    return () => {
+      active = false
+      clearInterval(timer)
+    }
   }, [id])
+
+  if (error && !data) {
+    return (
+      <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-center shadow-xs">
+        <div className="text-3xl mb-2">⚠️</div>
+        <h3 className="text-base font-extrabold text-rose-800">{error}</h3>
+        <p className="mt-1 text-xs text-rose-600">قد يكون الطالب غير مسجل في مساقاتك أو لم يتم العثور عليه</p>
+        <button
+          onClick={() => navigate('..')}
+          className="mt-4 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 transition-all cursor-pointer"
+        >
+          ← العودة لقائمة الطلاب
+        </button>
+      </div>
+    )
+  }
 
   if (!data) return <Spinner />
 
