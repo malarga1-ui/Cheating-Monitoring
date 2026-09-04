@@ -131,7 +131,10 @@ final class NetworkAnalyzer
         $rows = $db->prepare(
             "SELECT session_id, student_id, ip_address, detected_at
              FROM ip_snapshots
-             WHERE (account_id = :a OR account_id = 0) AND (exam_id = :eid OR exam_id = :qid)
+             WHERE (account_id = :a OR account_id = 0)
+               AND (exam_id = :eid OR exam_id = :qid
+                    OR session_id IN (SELECT session_id FROM session_summaries WHERE exam_id = :eid OR exam_id = :qid)
+                    OR session_id IN (SELECT session_id FROM sessions WHERE exam_id = :eid OR exam_id = :qid))
              ORDER BY detected_at"
         );
         $rows->execute([':a' => $accountId, ':eid' => $intId, ':qid' => $quizId]);
@@ -141,7 +144,11 @@ final class NetworkAnalyzer
             $rows = $db->prepare(
                 "SELECT session_id, moodle_user_id AS student_id, ip_address, event_time AS detected_at
                  FROM events
-                 WHERE (account_id = :a OR account_id = 0) AND (moodle_quiz_id = :qid OR moodle_quiz_id = :eid) AND ip_address != '' AND ip_address != 'unknown'
+                 WHERE (account_id = :a OR account_id = 0)
+                   AND (moodle_quiz_id = :qid OR moodle_quiz_id = :eid
+                        OR session_id IN (SELECT session_id FROM session_summaries WHERE exam_id = :eid OR exam_id = :qid)
+                        OR session_id IN (SELECT session_id FROM sessions WHERE exam_id = :eid OR exam_id = :qid))
+                   AND ip_address != '' AND ip_address != 'unknown'
                  GROUP BY session_id, moodle_user_id, ip_address
                  ORDER BY event_time"
             );

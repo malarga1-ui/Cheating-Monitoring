@@ -169,7 +169,10 @@ final class SimilarityEngine
         $st = $db->prepare(
             "SELECT session_id, student_id, question_id, question_type, answer_text, answer_length, word_count
              FROM answer_records
-             WHERE (account_id = :a OR account_id = 0) AND (exam_id = :eid OR exam_id = :qid)
+             WHERE (account_id = :a OR account_id = 0)
+               AND (exam_id = :eid OR exam_id = :qid OR moodle_quiz_id = :eid OR moodle_quiz_id = :qid
+                    OR session_id IN (SELECT session_id FROM session_summaries WHERE exam_id = :eid OR exam_id = :qid)
+                    OR session_id IN (SELECT session_id FROM sessions WHERE exam_id = :eid OR exam_id = :qid))
                AND TRIM(COALESCE(answer_text, '')) != ''
              ORDER BY student_id, question_id"
         );
@@ -184,21 +187,34 @@ final class SimilarityEngine
                         COALESCE(
                             NULLIF(CAST(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.question_id')) AS UNSIGNED), 0),
                             NULLIF(CAST(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.moodle.question.id')) AS UNSIGNED), 0),
+                            NULLIF(CAST(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.metadata.question_id')) AS UNSIGNED), 0),
                             1
                         ) AS question_id,
-                        JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.question_type')) AS question_type,
+                        COALESCE(
+                            JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.question_type')),
+                            JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.metadata.question_type')),
+                            'essay'
+                        ) AS question_type,
                         COALESCE(
                             JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.answer_text')),
+                            JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.metadata.answer_text')),
+                            JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.metadata.answer.answer_text')),
                             JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.text')),
                             ''
                         ) AS answer_text,
-                        CHAR_LENGTH(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.answer_text')), '')) AS answer_length,
+                        CHAR_LENGTH(COALESCE(
+                            JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.answer_text')),
+                            JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.metadata.answer_text')),
+                            JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.metadata.answer.answer_text')),
+                            ''
+                        )) AS answer_length,
                         10 AS word_count
                    FROM events e
                   WHERE (e.account_id = :a OR e.account_id = 0)
-                    AND (e.moodle_quiz_id = :eid OR e.moodle_quiz_id = :qid OR e.session_id IN (SELECT session_id FROM sessions WHERE exam_id = :eid OR exam_id = :qid))
+                    AND (e.moodle_quiz_id = :eid OR e.moodle_quiz_id = :qid
+                         OR e.session_id IN (SELECT session_id FROM sessions WHERE exam_id = :eid OR exam_id = :qid)
+                         OR e.session_id IN (SELECT session_id FROM session_summaries WHERE exam_id = :eid OR exam_id = :qid))
                     AND (e.event_type = 'answer_changed' OR e.event_type = 'question_submitted' OR e.payload LIKE '%answer_text%')
-                    AND CHAR_LENGTH(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(e.payload, '$.answer_text')), '')) > 2
                   ORDER BY e.id DESC"
             );
             $evSt->execute([':a' => $accountId, ':eid' => $intId, ':qid' => $quizId]);

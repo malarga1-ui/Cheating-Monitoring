@@ -208,22 +208,26 @@ function DeviceCard({ suspect, index }) {
  )
 }
 
-export default function MultiDevice({ courseId: propCourseId }) {
- const params = useParams()
- const courseId = propCourseId || params.courseId
- const [suspects, setSuspects] = useState(null)
- const [err, setErr] = useState('')
+export default function MultiDevice({ courseId: propCourseId, examId: propExamId }) {
+  const params = useParams()
+  const examId = propExamId || params.id || params.examId
+  const courseId = propCourseId || params.courseId
+  const [suspects, setSuspects] = useState(null)
+  const [err, setErr] = useState('')
 
- useEffect(() => {
- const url = '/api/teacher/exams/devices' + (courseId ? `?course_id=${courseId}` : '')
- api
- .get(url)
- .then((d) => {
- const sorted = (d.suspects || (Array.isArray(d) ? d : [])).sort((a, b) => (b.device_count || 0) - (a.device_count || 0))
- setSuspects(sorted)
- })
- .catch((e) => setErr(e.message))
- }, [courseId])
+  useEffect(() => {
+    const url = examId
+      ? `/api/teacher/exams/${examId}/devices`
+      : `/api/teacher/exams/devices${courseId ? `?course_id=${courseId}` : ''}`
+    api
+      .get(url)
+      .then((d) => {
+        const list = d?.suspects || (Array.isArray(d) ? d : [])
+        const sorted = [...list].sort((a, b) => (b.device_count || 0) - (a.device_count || 0))
+        setSuspects(sorted)
+      })
+      .catch((e) => setErr(e.message))
+  }, [courseId, examId])
 
  const totalSuspects = suspects?.length ?? 0
  const totalDevices = suspects?.reduce((sum, s) => sum + (s.device_count || 0), 0) ?? 0

@@ -130,36 +130,39 @@ function SimilarityPair({ pair, index }) {
  )
 }
 
-export default function SimilarityDetection({ courseId: propCourseId }) {
- const params = useParams()
- const courseId = propCourseId || params.courseId
- const [pairs, setPairs] = useState([])
- const [busy, setBusy] = useState(true)
- const [err, setErr] = useState('')
- const [riskFilter, setRiskFilter] = useState('')
+export default function SimilarityDetection({ courseId: propCourseId, examId: propExamId }) {
+  const params = useParams()
+  const examId = propExamId || params.id || params.examId
+  const courseId = propCourseId || params.courseId
+  const [pairs, setPairs] = useState([])
+  const [busy, setBusy] = useState(true)
+  const [err, setErr] = useState('')
+  const [riskFilter, setRiskFilter] = useState('')
 
- useEffect(() => {
- let cancelled = false
- setBusy(true)
- const url = '/api/teacher/exams/similarity' + (courseId ? `?course_id=${courseId}` : '')
- api
- .get(url)
- .then((data) => {
- if (cancelled) return
- const list = Array.isArray(data) ? data : data.pairs || []
- setPairs(
- [...list].sort((a, b) => (b.similarity_score || 0) - (a.similarity_score || 0))
- )
- setErr('')
- })
- .catch((e) => {
- if (!cancelled) setErr(e.message)
- })
- .finally(() => {
- if (!cancelled) setBusy(false)
- })
- return () => { cancelled = true }
- }, [courseId])
+  useEffect(() => {
+    let cancelled = false
+    setBusy(true)
+    const url = examId
+      ? `/api/teacher/exams/${examId}/similarity`
+      : `/api/teacher/exams/similarity${courseId ? `?course_id=${courseId}` : ''}`
+    api
+      .get(url)
+      .then((data) => {
+        if (cancelled) return
+        const list = Array.isArray(data) ? data : (data.pairs || [])
+        setPairs(
+          [...list].sort((a, b) => (b.similarity_score || b.similarity_pct || 0) - (a.similarity_score || a.similarity_pct || 0))
+        )
+        setErr('')
+      })
+      .catch((e) => {
+        if (!cancelled) setErr(e.message)
+      })
+      .finally(() => {
+        if (!cancelled) setBusy(false)
+      })
+    return () => { cancelled = true }
+  }, [courseId, examId])
 
  const filtered = riskFilter
  ? pairs.filter((p) => p.risk_level === riskFilter)

@@ -68,33 +68,37 @@ function SummaryStat({ label, value, accent = 'brand', delay = 0 }) {
  )
 }
 
-export default function NetworkAnalysis({ courseId: propCourseId }) {
- const params = useParams()
- const courseId = propCourseId || params.courseId
- const [groups, setGroups] = useState([])
- const [busy, setBusy] = useState(true)
- const [err, setErr] = useState('')
- const [filter, setFilter] = useState('all')
+export default function NetworkAnalysis({ courseId: propCourseId, examId: propExamId }) {
+  const params = useParams()
+  const examId = propExamId || params.id || params.examId
+  const courseId = propCourseId || params.courseId
+  const [groups, setGroups] = useState([])
+  const [busy, setBusy] = useState(true)
+  const [err, setErr] = useState('')
+  const [filter, setFilter] = useState('all')
 
- useEffect(() => {
- let cancelled = false
- ;(async () => {
- setBusy(true)
- try {
- const url = '/api/teacher/exams/network' + (courseId ? `?course_id=${courseId}` : '')
- const data = await api.get(url)
- if (!cancelled) {
- setGroups((data?.groups || (Array.isArray(data) ? data : [])).sort((a, b) => (b.risk_score || 0) - (a.risk_score || 0)))
- setErr('')
- }
- } catch (e) {
- if (!cancelled) setErr(e.message)
- } finally {
- if (!cancelled) setBusy(false)
- }
- })()
- return () => { cancelled = true }
- }, [courseId])
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setBusy(true)
+      try {
+        const url = examId
+          ? `/api/teacher/exams/${examId}/network`
+          : `/api/teacher/exams/network${courseId ? `?course_id=${courseId}` : ''}`
+        const data = await api.get(url)
+        if (!cancelled) {
+          const list = data?.groups || (Array.isArray(data) ? data : [])
+          setGroups([...list].sort((a, b) => (b.risk_score || 0) - (a.risk_score || 0)))
+          setErr('')
+        }
+      } catch (e) {
+        if (!cancelled) setErr(e.message)
+      } finally {
+        if (!cancelled) setBusy(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [courseId, examId])
 
  const filtered = useMemo(() => {
  if (filter === 'all') return groups

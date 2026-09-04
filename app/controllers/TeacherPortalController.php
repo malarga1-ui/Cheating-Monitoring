@@ -979,18 +979,34 @@ final class TeacherPortalController
         $isAdmin = Auth::isOwner();
         $ids = $isAdmin ? self::allCourseIds($accountId) : Teachers::courseIds($accountId, Auth::teacherId());
         $courseId = (int)($_GET['course_id'] ?? 0);
+        $examId = (int)($_GET['exam_id'] ?? 0);
         if ($courseId > 0 && in_array($courseId, $ids, true)) {
             $ids = [$courseId];
         }
         if ($ids === []) { Response::ok([]); return; }
         $in = self::safeInts($ids);
 
+        // Auto-run NetworkAnalyzer on exams in this course/exam so groups are always fresh
+        $examSql = "SELECT id FROM exams WHERE (account_id = ? OR account_id = 0) AND moodle_course_id IN ($in)";
+        $examParams = [$accountId];
+        if ($examId > 0) {
+            $examSql .= " AND (id = ? OR moodle_quiz_id = ?)";
+            $examParams[] = $examId;
+            $examParams[] = $examId;
+        }
+        $examRows = Database::fetchAll($examSql, $examParams);
+        foreach ($examRows as $er) {
+            try { NetworkAnalyzer::analyzeExam($accountId, (int)$er['id']); } catch (\Throwable $e) {}
+        }
+
+        $examFilter = ($examId > 0) ? " AND (ng.exam_id = $examId OR e.id = $examId OR e.moodle_quiz_id = $examId)" : "";
+
         $groups = Database::fetchAll(
             "SELECT ng.id, ng.ip_address, ng.student_count, ng.student_ids, ng.risk_level, ng.detected_at,
                     ng.exam_id, e.name AS exam_name
              FROM network_groups ng
              JOIN exams e ON (e.id = ng.exam_id OR e.moodle_quiz_id = ng.exam_id)
-             WHERE (ng.account_id = ? OR ng.account_id = 0) AND e.moodle_course_id IN ($in)
+             WHERE (ng.account_id = ? OR ng.account_id = 0) AND e.moodle_course_id IN ($in) $examFilter
              ORDER BY ng.student_count DESC, ng.risk_level DESC
              LIMIT 200",
             [$accountId]
@@ -1043,6 +1059,7 @@ final class TeacherPortalController
         $isAdmin = Auth::isOwner();
         $ids = $isAdmin ? self::allCourseIds($accountId) : Teachers::courseIds($accountId, Auth::teacherId());
         $courseId = (int)($_GET['course_id'] ?? 0);
+        $examId = (int)($_GET['exam_id'] ?? 0);
         if ($courseId > 0 && in_array($courseId, $ids, true)) {
             $ids = [$courseId];
         }
@@ -1051,7 +1068,21 @@ final class TeacherPortalController
 
         try { Aggregator::process(500); } catch (\Throwable $e) {}
 
+        // Auto-run SimilarityEngine on exams in this course/exam so pairs are always fresh
+        $examSql = "SELECT id FROM exams WHERE (account_id = ? OR account_id = 0) AND moodle_course_id IN ($in)";
+        $examParams = [$accountId];
+        if ($examId > 0) {
+            $examSql .= " AND (id = ? OR moodle_quiz_id = ?)";
+            $examParams[] = $examId;
+            $examParams[] = $examId;
+        }
+        $examRows = Database::fetchAll($examSql, $examParams);
+        foreach ($examRows as $er) {
+            try { SimilarityEngine::analyzeExam($accountId, (int)$er['id']); } catch (\Throwable $e) {}
+        }
+
         $minSim = max(0, min(100, (int)($_GET['min_similarity'] ?? 10)));
+        $examFilter = ($examId > 0) ? " AND (sp.exam_id = $examId OR e.id = $examId OR e.moodle_quiz_id = $examId)" : "";
 
         $pairs = Database::fetchAll(
             "SELECT sp.student_a_id, sp.student_b_id, sp.similarity_pct,
@@ -1059,7 +1090,7 @@ final class TeacherPortalController
                     sp.exam_id, e.name AS exam_name
              FROM similarity_pairs sp
              JOIN exams e ON (e.id = sp.exam_id OR e.moodle_quiz_id = sp.exam_id)
-             WHERE (sp.account_id = ? OR sp.account_id = 0) AND e.moodle_course_id IN ($in) AND sp.similarity_pct >= ?
+             WHERE (sp.account_id = ? OR sp.account_id = 0) AND e.moodle_course_id IN ($in) $examFilter AND sp.similarity_pct >= ?
              ORDER BY sp.similarity_pct DESC
              LIMIT 200",
             [$accountId, $minSim]
@@ -1124,22 +1155,25 @@ final class TeacherPortalController
         $isAdmin = Auth::isOwner();
         $ids = $isAdmin ? self::allCourseIds($accountId) : Teachers::courseIds($accountId, Auth::teacherId());
         $courseId = (int)($_GET['course_id'] ?? 0);
+        $examId = (int)($_GET['exam_id'] ?? 0);
         if ($courseId > 0 && in_array($courseId, $ids, true)) {
             $ids = [$courseId];
         }
         if ($ids === []) { Response::ok([]); return; }
         $in = self::safeInts($ids);
 
+        $examFilter = ($examId > 0) ? " AND (sd.exam_id = $examId OR e.id = $examId OR e.moodle_quiz_id = $examId)" : "";
+
         $devices = Database::fetchAll(
             "SELECT sd.student_id, sd.ip_address, sd.browser_fp, sd.user_agent,
                     sd.first_seen, sd.last_seen, sd.snapshot_count, sd.exam_id,
                     s.fullname, s.username, e.name AS exam_name
              FROM student_devices sd
-             JOIN students s ON s.id = sd.student_id AND s.account_id = sd.account_id
-             JOIN exams e ON e.id = sd.exam_id AND e.account_id = sd.account_id
-             WHERE sd.account_id = ? AND e.moodle_course_id IN ($in)
+             LEFT JOIN students s ON (s.id = sd.student_id OR s.moodle_user_id = sd.student_id) AND (s.account_id = ? OR s.account_id = 0)
+             JOIN exams e ON (e.id = sd.exam_id OR e.moodle_quiz_id = sd.exam_id) AND (e.account_id = ? OR e.account_id = 0)
+             WHERE (sd.account_id = ? OR sd.account_id = 0) AND e.moodle_course_id IN ($in) $examFilter
              ORDER BY sd.student_id, sd.first_seen",
-            [$accountId]
+            [$accountId, $accountId, $accountId]
         );
 
         $byStudent = [];
