@@ -29,7 +29,7 @@ export const SITE = {
   ],
 
   // الفريق — ضع صورة كل عضو في مجلد public/team ثم اكتب اسم الملف هنا
-  supervisor: { name: 'أ. د. رامي لبد', role: 'المشرف العام', photo: '/team/ramy-labad-supervisor.png' },
+  supervisor: { name: 'م. رامي رياض لبد', role: 'المشرف العام', photo: '/team/ramy-labad-supervisor.png' },
   team: [
     { name: 'جاد الله خالد البنا', role: 'قائد الفريق', photo: '/team/jadallah-banna.jpg', bio: '' },
     { name: 'أحمد منير الرنتيسي', role: 'فريق التطوير', photo: '', bio: '' },
