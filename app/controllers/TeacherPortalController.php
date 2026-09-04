@@ -1672,7 +1672,42 @@ final class TeacherPortalController
                 'exam_id'              => (int)$a['exam_id'],
             ], $answers),
             'clipboard' => $formattedClipboard,
+            'ai_report' => (function() use ($accountId, $actualStudentId, $sessions) {
+                require_once __DIR__ . '/../StudentAIAuditor.php';
+                $firstExamId = isset($sessions[0]['exam_id']) ? (int)$sessions[0]['exam_id'] : null;
+                return \StudentAIAuditor::getCachedReport($accountId, $actualStudentId, $firstExamId);
+            })(),
         ]);
+    }
+
+    /** GET /api/teacher/students/{id}/ai-report — get cached AI forensic report */
+    public static function getStudentAIReport(int $studentId): void
+    {
+        Auth::requireTeacher();
+        $accountId = Auth::accountId();
+        $examId = (int)($_GET['exam_id'] ?? 0);
+
+        require_once __DIR__ . '/../StudentAIAuditor.php';
+        $report = \StudentAIAuditor::getCachedReport($accountId, $studentId, $examId > 0 ? $examId : null);
+        Response::ok(['report' => $report]);
+    }
+
+    /** POST /api/teacher/students/{id}/ai-report — generate or re-generate AI forensic report on-demand */
+    public static function generateStudentAIReport(int $studentId): void
+    {
+        Auth::requireTeacher();
+        $accountId = Auth::accountId();
+        $teacherId = Auth::teacherId();
+        $body = em_body_json() ?? [];
+        $examId = (int)($body['exam_id'] ?? ($_GET['exam_id'] ?? 0));
+
+        require_once __DIR__ . '/../StudentAIAuditor.php';
+        try {
+            $report = \StudentAIAuditor::generateReport($accountId, $teacherId, $studentId, $examId > 0 ? $examId : null);
+            Response::ok($report);
+        } catch (\Throwable $e) {
+            Response::error('فشل توليد تقرير الذكاء الاصطناعي: ' . $e->getMessage(), 500);
+        }
     }
 
     /* ── Course Detail with exams ─────────────────────────────────── */

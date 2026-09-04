@@ -891,6 +891,302 @@ function CourseDetail() {
   )
 }
 
+/* ─── Markdown Viewer Component ───────────────────────────── */
+function MarkdownViewer({ content }) {
+  if (!content) return null
+
+  const lines = content.split('\n')
+  const blocks = []
+  let currentList = []
+
+  const flushList = () => {
+    if (currentList.length > 0) {
+      blocks.push({ type: 'list', items: [...currentList] })
+      currentList = []
+    }
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i]
+    const trimmed = raw.trim()
+
+    if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      currentList.push(trimmed.substring(2))
+      continue
+    } else {
+      flushList()
+    }
+
+    if (trimmed === '') {
+      continue
+    }
+
+    if (trimmed.startsWith('### ')) {
+      blocks.push({ type: 'h3', text: trimmed.substring(4) })
+    } else if (trimmed.startsWith('## ')) {
+      blocks.push({ type: 'h2', text: trimmed.substring(3) })
+    } else if (trimmed.startsWith('# ')) {
+      blocks.push({ type: 'h1', text: trimmed.substring(2) })
+    } else if (trimmed.startsWith('> ')) {
+      blocks.push({ type: 'quote', text: trimmed.substring(2) })
+    } else if (trimmed === '---' || trimmed === '***') {
+      blocks.push({ type: 'hr' })
+    } else {
+      blocks.push({ type: 'p', text: trimmed })
+    }
+  }
+  flushList()
+
+  const renderInline = (text) => {
+    const parts = text.split(/(\*\*.*?\*\*|`.*?`)/g)
+    return parts.map((part, idx) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        return <strong key={idx} className="font-black text-slate-900">{part.slice(2, -2)}</strong>
+      }
+      if (part.startsWith('`') && part.endsWith('`')) {
+        return <code key={idx} className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-brand-700">{part.slice(1, -1)}</code>
+      }
+      return part
+    })
+  }
+
+  return (
+    <div className="space-y-3.5 text-sm leading-relaxed text-slate-700 text-right" dir="rtl">
+      {blocks.map((b, idx) => {
+        if (b.type === 'h1') {
+          return <h1 key={idx} className="mt-4 text-xl font-black text-slate-900 border-b border-slate-200 pb-2">{renderInline(b.text)}</h1>
+        }
+        if (b.type === 'h2') {
+          return (
+            <h2 key={idx} className="mt-4 text-base font-extrabold text-violet-900 flex items-center gap-2 border-r-4 border-violet-500 pr-2.5">
+              {renderInline(b.text)}
+            </h2>
+          )
+        }
+        if (b.type === 'h3') {
+          return <h3 key={idx} className="mt-3 text-sm font-extrabold text-slate-800">{renderInline(b.text)}</h3>
+        }
+        if (b.type === 'quote') {
+          return (
+            <div key={idx} className="rounded-xl border-r-4 border-amber-500 bg-amber-50/50 p-3 text-xs font-semibold text-amber-950 my-2">
+              {renderInline(b.text)}
+            </div>
+          )
+        }
+        if (b.type === 'hr') {
+          return <hr key={idx} className="my-4 border-slate-200" />
+        }
+        if (b.type === 'list') {
+          return (
+            <ul key={idx} className="space-y-1.5 pr-5 my-2">
+              {b.items.map((item, itemIdx) => (
+                <li key={itemIdx} className="list-disc list-outside text-xs text-slate-700 leading-normal">
+                  {renderInline(item)}
+                </li>
+              ))}
+            </ul>
+          )
+        }
+        return <p key={idx} className="text-xs text-slate-700 leading-relaxed font-normal">{renderInline(b.text)}</p>
+      })}
+    </div>
+  )
+}
+
+/* ─── AI Forensic Dossier Component ────────────────────────── */
+function StudentAIForensicReport({ studentId, initialReport, studentName, sessions }) {
+  const [report, setReport] = useState(initialReport || null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [copied, setCopied] = useState(false)
+  const [selectedExamId, setSelectedExamId] = useState(sessions?.[0]?.exam_id || '')
+
+  useEffect(() => {
+    if (initialReport && !report) {
+      setReport(initialReport)
+    }
+  }, [initialReport])
+
+  async function handleGenerate() {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await api.post(`/api/teacher/students/${studentId}/ai-report`, {
+        exam_id: selectedExamId ? parseInt(selectedExamId) : undefined
+      })
+      if (res && res.report_markdown) {
+        setReport(res)
+      } else {
+        throw new Error(res?.message || 'تعذر استلام تقرير الذكاء الاصطناعي')
+      }
+    } catch (e) {
+      setError(e.message || 'فشل توليد التقرير الذكي')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function handleCopy() {
+    if (!report?.report_markdown) return
+    navigator.clipboard.writeText(report.report_markdown).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 3000)
+    })
+  }
+
+  function handlePrint() {
+    window.print()
+  }
+
+  return (
+    <section className="rounded-3xl border border-violet-200/80 bg-gradient-to-br from-violet-50/60 via-white to-purple-50/30 p-6 shadow-sm ring-1 ring-violet-100/60 relative overflow-hidden">
+      {/* Background ambient light */}
+      <div className="pointer-events-none absolute -left-12 -top-12 h-44 w-44 rounded-full bg-violet-500/10 blur-3xl" />
+      <div className="pointer-events-none absolute -right-12 -bottom-12 h-44 w-44 rounded-full bg-brand-500/10 blur-3xl" />
+
+      {/* Header */}
+      <div className="relative flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-violet-100">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-brand-600 text-2xl text-white shadow-md shadow-violet-500/20">
+            🤖
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-black text-slate-800">
+                تقرير التحليل الجنائي الذكي للأستاذ (AI Forensic Dossier)
+              </h3>
+              <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-[10px] font-extrabold text-violet-800">
+                SOAR AI Auditor
+              </span>
+            </div>
+            <p className="mt-0.5 text-xs text-slate-500 font-medium">
+              تشريح معمق لسلوك الطالب، وتفكيك نصوص الحافظة والنسخ واللصق، مع تبرير أكاديمي بالأدلة لدرجة الشبهة المرصودة.
+            </p>
+          </div>
+        </div>
+
+        {/* Controls */}
+        <div className="flex flex-wrap items-center gap-2">
+          {sessions?.length > 1 && (
+            <select
+              value={selectedExamId}
+              onChange={(e) => setSelectedExamId(e.target.value)}
+              className="rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-extrabold text-slate-700 outline-none shadow-xs"
+            >
+              {sessions.map((ss) => (
+                <option key={ss.session_id} value={ss.exam_id}>
+                  امتحان: {ss.exam_name}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {report && (
+            <>
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-brand-600 transition-colors shadow-xs active:scale-95 cursor-pointer"
+                title="نسخ نص التقرير"
+              >
+                <span>{copied ? '✓' : '📋'}</span>
+                <span>{copied ? 'تم النسخ!' : 'نسخ التقرير'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-xs active:scale-95 cursor-pointer"
+                title="طباعة التقرير"
+              >
+                <span>🖨️</span>
+                <span>طباعة</span>
+              </button>
+            </>
+          )}
+
+          <button
+            type="button"
+            disabled={loading}
+            onClick={handleGenerate}
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-extrabold text-white shadow-md transition-all active:scale-95 cursor-pointer ${
+              loading
+                ? 'bg-violet-400 cursor-not-allowed'
+                : 'bg-gradient-to-r from-violet-600 to-brand-600 hover:from-violet-700 hover:to-brand-700 shadow-violet-600/20'
+            }`}
+          >
+            <span>{loading ? '⏳' : report ? '🔄' : '⚡'}</span>
+            <span>{loading ? 'جارٍ التحليل...' : report ? 'إعادة التوليد والتحديث' : 'توليد تقرير الذكاء الاصطناعي'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Error Alert */}
+      {error && (
+        <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50/80 p-3.5 text-xs font-bold text-rose-700 flex items-center justify-between">
+          <span>⚠️ {error}</span>
+          <button onClick={() => setError('')} className="text-rose-500 hover:text-rose-700 font-extrabold cursor-pointer">✕</button>
+        </div>
+      )}
+
+      {/* Content State */}
+      <div className="relative mt-4">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-12 px-4 text-center space-y-3">
+            <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-100 text-violet-600 shadow-inner">
+              <span className="animate-spin text-2xl">⚙️</span>
+            </div>
+            <h4 className="text-sm font-black text-slate-800">
+              جارٍ تفكيك سجلات الطالب ومطابقة الحافظة وتوليد التقرير الجنائي...
+            </h4>
+            <p className="text-xs text-slate-500 max-w-md">
+              يقوم نموذج الذكاء الاصطناعي بدراسة نصوص الأسئلة والإجابات، ورصد عمليات النسخ، ومقارنة سرعة الكتابة لتبرير نسبة الخطورة للأستاذ.
+            </p>
+          </div>
+        ) : report ? (
+          <div className="space-y-4">
+            {/* Meta info header */}
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-violet-100/50 px-3.5 py-2 text-[11px] font-bold text-violet-900 border border-violet-200/50">
+              <div className="flex items-center gap-3">
+                <span>🤖 النموذج: <strong className="font-extrabold text-violet-950">{report.model_used || 'Google Gemini 2.5 Flash'}</strong></span>
+                <span>•</span>
+                <span>تاريخ التوليد: <span dir="ltr">{report.created_at || report.updated_at || 'الآن'}</span></span>
+              </div>
+              <span className="rounded-full bg-white px-2 py-0.5 text-xs font-extrabold text-violet-700 shadow-xs">
+                مكتمل وموثق ✓
+              </span>
+            </div>
+
+            {/* Rendered Markdown report */}
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs select-text">
+              <MarkdownViewer content={report.report_markdown} />
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-10 px-4 text-center space-y-3">
+            <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-violet-100 text-3xl shadow-xs">
+              📑
+            </div>
+            <h4 className="text-sm font-extrabold text-slate-800">
+              لم يتم توليد تقرير الذكاء الاصطناعي لهذا الطالب بعد
+            </h4>
+            <p className="text-xs text-slate-500 max-w-lg leading-relaxed">
+              اضغط على زر <strong className="text-violet-700">"توليد تقرير الذكاء الاصطناعي"</strong> لتحصل على تقرير جنائي أكاديمي متكامل، يحلل نصوص الأسئلة المنسوخة وما إذا كان الطالب نسخ السؤال للبحث عنه خارجياً، ويشرح سرعة الحل والتطابق اللغوي، ليقدم لك الخلاصة والتوصية المناسبة.
+            </p>
+            <button
+              type="button"
+              onClick={handleGenerate}
+              className="mt-2 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-brand-600 px-5 py-2.5 text-xs font-extrabold text-white shadow-md shadow-violet-600/20 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
+            >
+              <span>⚡</span>
+              <span>توليد التقرير الآن للطالب {studentName}</span>
+            </button>
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
 /* ─── SUB-PAGE: Student Detail ───────────────────────────── */
 function StudentDetail() {
   const { id } = useParams()
@@ -1050,6 +1346,14 @@ function StudentDetail() {
           </div>
         </div>
       </div>
+
+      {/* ── AI Forensic Dossier Section ── */}
+      <StudentAIForensicReport
+        studentId={id}
+        initialReport={data.ai_report}
+        studentName={s.fullname}
+        sessions={sessions}
+      />
 
       {sessions.length > 0 && (
         <section>

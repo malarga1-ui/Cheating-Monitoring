@@ -86,6 +86,8 @@ $router->get('/api/teacher/exams/devices', [TeacherPortalController::class, 'all
 // Students list + detail
 $router->get('/api/teacher/students', [TeacherPortalController::class, 'students']);
 $router->get('/api/teacher/students/{id}', [TeacherPortalController::class, 'studentDetail']);
+$router->get('/api/teacher/students/{id}/ai-report', [TeacherPortalController::class, 'getStudentAIReport']);
+$router->post('/api/teacher/students/{id}/ai-report', [TeacherPortalController::class, 'generateStudentAIReport']);
 $router->post('/api/teacher/students/{id}/delete', [TeacherPortalController::class, 'deleteStudent']);
 $router->delete('/api/teacher/students/{id}', [TeacherPortalController::class, 'deleteStudent']);
 // Single-exam analytics
