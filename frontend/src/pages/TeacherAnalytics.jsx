@@ -142,7 +142,16 @@ export default function TeacherAnalytics({ courseId: propCourseId, examId: propE
   async function handleAction(type, actionParams) {
     setActionModal({ open: false, type: '', student: null })
     try {
-      const endpoint = type === 'message' ? 'message' : type === 'lock' ? 'lock' : type === 'unlock' ? 'unlock' : 'reduce-time'
+      const endpoint =
+        type === 'message' ? 'message' :
+        type === 'lock' ? 'lock' :
+        type === 'unlock' ? 'unlock' :
+        type === 'reduce-time' ? 'reduce-time' :
+        type === 'block-copy' ? 'block-copy' :
+        type === 'allow-copy' ? 'allow-copy' :
+        type === 'block-paste' ? 'block-paste' :
+        type === 'allow-paste' ? 'allow-paste' :
+        type === 'terminate' ? 'terminate' : type
       const sid = actionModal.student?.student_id || actionModal.student?.id || actionModal.student?.moodle_user_id || 0
       const ssid = actionModal.student?.session_summary_id || 0
       const targetExamId = examId ? parseInt(examId) : (actionModal.student?.exam_id || 0)
@@ -157,13 +166,16 @@ export default function TeacherAnalytics({ courseId: propCourseId, examId: propE
       setConfirmModal({
         open: true,
         title: 'تم بنجاح',
-        message: type === 'message'
-          ? 'تم إرسال الرسالة وسيتلقاها الطالب في الامتحان فوراً.'
-          : type === 'lock'
-          ? 'تم قفل الامتحان عن الطالب فوراً.'
-          : type === 'unlock'
-          ? 'تم إلغاء قفل الامتحان وسيعود الطالب لاستكمال امتحانه فوراً.'
-          : `تم تقليص الوقت بـ ${actionParams.minutes || 5} دقائق.`
+        message:
+          type === 'message' ? 'تم إرسال الرسالة وسيتلقاها الطالب في الامتحان فوراً.' :
+          type === 'block-copy' ? 'تم تفعيل منع النسخ للطالب فوراً.' :
+          type === 'allow-copy' ? 'تم السماح بالنسخ للطالب.' :
+          type === 'block-paste' ? 'تم تفعيل منع اللصق للطالب فوراً.' :
+          type === 'allow-paste' ? 'تم السماح باللصق للطالب.' :
+          type === 'lock' ? 'تم قفل الامتحان عن الطالب فوراً.' :
+          type === 'unlock' ? 'تم إلغاء قفل الامتحان وسيعود الطالب لاستكمال امتحانه فوراً.' :
+          type === 'terminate' ? 'تم إنهاء جلسة الامتحان وتسليم إجابات الطالب الحالية للنظام فوراً دون أي تكرار.' :
+          `تم تقليص الوقت بـ ${actionParams.minutes || 5} دقائق.`
       })
     } catch (e) {
       setConfirmModal({ open: true, title: 'تنبيه', message: e.message || 'تعذر إرسال الإجراء' })

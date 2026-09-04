@@ -311,6 +311,104 @@ final class TeacherActionController
     }
 
     /**
+     * Record a targeted action for a student
+     */
+    private static function recordTargetedAction(string $actionType, string $successMessage, ?string $message = null): void
+    {
+        self::ensureTables();
+        Auth::requireTeacher();
+        Auth::guardStateChangingRequest();
+        $accountId = Auth::accountId();
+        $teacherId = Auth::teacherId();
+        $body = em_body_json() ?? [];
+
+        $studentId = (int)($body['student_id'] ?? ($body['studentId'] ?? ($body['id'] ?? 0)));
+        $examId = self::resolveExamId($accountId, (int)($body['exam_id'] ?? 0), $studentId);
+        $sessionId = (int)($body['session_summary_id'] ?? ($body['sessionId'] ?? 0));
+        $msg = $message !== null ? $message : trim((string)($body['message'] ?? ($body['reason'] ?? '')));
+
+        if ($studentId <= 0) {
+            Response::error('رقم الطالب مطلوب', 422);
+        }
+
+        $exam = self::requireExamOwnership($accountId, $teacherId, $examId);
+        $internalExamId = (int)$exam['id'];
+
+        if ($sessionId <= 0) {
+            $foundId = Database::scalar(
+                'SELECT id FROM session_summaries WHERE (exam_id = ? OR exam_id = ?) AND (student_id = ? OR student_id IN (SELECT id FROM students WHERE moodle_user_id = ?)) ORDER BY id DESC LIMIT 1',
+                [$internalExamId, (int)$exam['moodle_quiz_id'], $studentId, $studentId]
+            );
+            $sessionId = $foundId ? (int)$foundId : 0;
+        }
+
+        if ($actionType === 'terminate_session') {
+            // Expire any existing locks so there are no lock conflicts
+            Database::execute(
+                'UPDATE teacher_actions SET status = "expired" WHERE exam_id = ? AND student_id = ? AND action_type IN ("lock_exam", "terminate_session")',
+                [$internalExamId, $studentId]
+            );
+        }
+
+        Database::execute(
+            'INSERT INTO teacher_actions
+                (account_id, exam_id, session_summary_id, student_id, teacher_id, action_type, message, status, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, "pending", NOW())',
+            [$accountId, $internalExamId, $sessionId, $studentId, $teacherId, $actionType, $msg !== '' ? $msg : null]
+        );
+        $actionId = (int)Database::scalar('SELECT LAST_INSERT_ID()');
+
+        Database::execute(
+            'INSERT INTO teacher_action_log (action_id, event_type, created_at) VALUES (?, "created", NOW())',
+            [$actionId]
+        );
+
+        Response::ok(['ok' => true, 'action_id' => $actionId, 'message' => $successMessage]);
+    }
+
+    /**
+     * POST /api/teacher/actions/block-copy
+     */
+    public static function blockCopy(): void
+    {
+        self::recordTargetedAction('block_copy', 'تم تفعيل منع النسخ للطالب بنجاح');
+    }
+
+    /**
+     * POST /api/teacher/actions/allow-copy
+     */
+    public static function allowCopy(): void
+    {
+        self::recordTargetedAction('allow_copy', 'تم إلغاء حظر النسخ للطالب بنجاح');
+    }
+
+    /**
+     * POST /api/teacher/actions/block-paste
+     */
+    public static function blockPaste(): void
+    {
+        self::recordTargetedAction('block_paste', 'تم تفعيل منع اللصق للطالب بنجاح');
+    }
+
+    /**
+     * POST /api/teacher/actions/allow-paste
+     */
+    public static function allowPaste(): void
+    {
+        self::recordTargetedAction('allow_paste', 'تم إلغاء حظر اللصق للطالب بنجاح');
+    }
+
+    /**
+     * POST /api/teacher/actions/terminate
+     */
+    public static function terminateSession(): void
+    {
+        $body = em_body_json() ?? [];
+        $reason = trim((string)($body['message'] ?? ($body['reason'] ?? 'تم إنهاء جلسة الامتحان وتسليم الإجابات بقرار من مدرّس المساق')));
+        self::recordTargetedAction('terminate_session', 'تم إنهاء جلسة الامتحان وتسليم إجابات الطالب بنجاح', $reason);
+    }
+
+    /**
      * Set CORS headers for Moodle plugin requests.
      */
     private static function corsHeaders(): void
@@ -704,7 +802,8 @@ final class TeacherActionController
         $message = trim((string)($body['message'] ?? ''));
         $actionType = (string)($body['action_type'] ?? 'send_message');
 
-        if (!in_array($actionType, ['send_message', 'lock_exam', 'reduce_time'], true)) {
+        $allowedTypes = ['send_message', 'lock_exam', 'reduce_time', 'block_copy', 'allow_copy', 'block_paste', 'allow_paste', 'terminate_session'];
+        if (!in_array($actionType, $allowedTypes, true)) {
             $actionType = 'send_message';
         }
 
@@ -740,6 +839,18 @@ final class TeacherActionController
             $sid = (int)$st['student_id'];
             if ($sid <= 0) continue;
 
+            $actionMsg = null;
+            if ($actionType === 'send_message') {
+                $actionMsg = $message;
+            } elseif ($actionType === 'terminate_session') {
+                $actionMsg = $message !== '' ? $message : 'تم إنهاء جلسة الامتحان وتسليم الإجابات بقرار من مدرّس المساق';
+                // Expire active locks so student doesn't get stuck
+                Database::execute(
+                    'UPDATE teacher_actions SET status = "expired" WHERE account_id = ? AND exam_id = ? AND student_id = ? AND action_type IN ("lock_exam", "unlock_exam") AND status != "expired"',
+                    [$accountId, $internalExamId, $sid]
+                );
+            }
+
             Database::execute(
                 'INSERT INTO teacher_actions
                     (account_id, exam_id, session_summary_id, student_id, teacher_id, action_type, message, minutes_to_reduce, status, created_at)
@@ -750,7 +861,7 @@ final class TeacherActionController
                     $sid,
                     $teacherId,
                     $actionType,
-                    $actionType === 'send_message' ? $message : null,
+                    $actionMsg,
                     $actionType === 'reduce_time' ? $minutes : null,
                 ]
             );

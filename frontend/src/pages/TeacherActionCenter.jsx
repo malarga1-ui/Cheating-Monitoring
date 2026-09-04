@@ -92,6 +92,21 @@ export default function TeacherActionCenter() {
         if (!directMsg.trim()) return
         await api.post('/api/teacher/actions/message', { student_id: studentId, exam_id: examId, message: directMsg })
         setNotice('تم إرسال الرسالة للطالب')
+      } else if (type === 'block-copy') {
+        await api.post('/api/teacher/actions/block-copy', { student_id: studentId, exam_id: examId })
+        setNotice('تم تفعيل منع النسخ للطالب')
+      } else if (type === 'allow-copy') {
+        await api.post('/api/teacher/actions/allow-copy', { student_id: studentId, exam_id: examId })
+        setNotice('تم السماح بالنسخ للطالب')
+      } else if (type === 'block-paste') {
+        await api.post('/api/teacher/actions/block-paste', { student_id: studentId, exam_id: examId })
+        setNotice('تم تفعيل منع اللصق للطالب')
+      } else if (type === 'allow-paste') {
+        await api.post('/api/teacher/actions/allow-paste', { student_id: studentId, exam_id: examId })
+        setNotice('تم السماح باللصق للطالب')
+      } else if (type === 'terminate') {
+        await api.post('/api/teacher/actions/terminate', { student_id: studentId, exam_id: examId, message: directMsg || 'تم إنهاء الجلسة وتسليم الامتحان بقرار من مدرّس المساق' })
+        setNotice('تم إنهاء جلسة الامتحان وتسليم إجابات الطالب بنجاح')
       } else if (type === 'lock') {
         await api.post('/api/teacher/actions/lock', { student_id: studentId, exam_id: examId })
         setNotice('تم قفل الامتحان على الطالب')
@@ -127,6 +142,16 @@ export default function TeacherActionCenter() {
     switch (type) {
       case 'send_message':
         return <span className="font-bold text-brand-700">💬 رسالة: "{action.message}"</span>
+      case 'block_copy':
+        return <span className="font-bold text-rose-700">📋 تفعيل منع النسخ</span>
+      case 'allow_copy':
+        return <span className="font-bold text-emerald-700">📋 السماح بالنسخ</span>
+      case 'block_paste':
+        return <span className="font-bold text-purple-700">📥 تفعيل منع اللصق</span>
+      case 'allow_paste':
+        return <span className="font-bold text-emerald-700">📥 السماح باللصق</span>
+      case 'terminate_session':
+        return <span className="font-bold text-red-700">🛑 إنهاء الجلسة وتسليم الامتحان</span>
       case 'lock_exam':
         return <span className="font-bold text-rose-700">🔒 قفل الامتحان</span>
       case 'unlock_exam':
@@ -264,35 +289,60 @@ export default function TeacherActionCenter() {
                         {act.created_at ? new Date(act.created_at).toLocaleTimeString('ar-EG') : '—'}
                       </td>
                       <td className="px-5 py-3.5">
-                        {act.action_type === 'lock_exam' && act.status !== 'revoked' ? (
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <button
-                            onClick={() => {
-                              setDirectActionModal({
-                                studentId: act.student_id,
-                                studentName: act.student_name,
-                                examId: act.exam_id,
-                                type: 'unlock',
-                              })
-                            }}
-                            className="rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 hover:bg-emerald-100 transition-colors"
+                            title="إرسال رسالة تحذيرية"
+                            onClick={() => setDirectActionModal({ studentId: act.student_id, studentName: act.student_name, examId: act.exam_id, type: 'message' })}
+                            className="rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-700 hover:bg-amber-100 transition-colors"
                           >
-                            🔓 إلغاء القفل
+                            💬 رسالة
                           </button>
-                        ) : (
                           <button
-                            onClick={() => {
-                              setDirectActionModal({
-                                studentId: act.student_id,
-                                studentName: act.student_name,
-                                examId: act.exam_id,
-                                type: 'message',
-                              })
-                            }}
-                            className="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-200 transition-colors"
+                            title="منع النسخ"
+                            onClick={() => setDirectActionModal({ studentId: act.student_id, studentName: act.student_name, examId: act.exam_id, type: 'block-copy' })}
+                            className="rounded-lg bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-700 hover:bg-rose-100 transition-colors"
                           >
-                            💬 إرسال رسالة
+                            📋 منع النسخ
                           </button>
-                        )}
+                          <button
+                            title="منع اللصق"
+                            onClick={() => setDirectActionModal({ studentId: act.student_id, studentName: act.student_name, examId: act.exam_id, type: 'block-paste' })}
+                            className="rounded-lg bg-purple-50 px-2 py-1 text-[11px] font-bold text-purple-700 hover:bg-purple-100 transition-colors"
+                          >
+                            📥 منع اللصق
+                          </button>
+                          <button
+                            title="تقليص الوقت"
+                            onClick={() => setDirectActionModal({ studentId: act.student_id, studentName: act.student_name, examId: act.exam_id, type: 'reduce-time' })}
+                            className="rounded-lg bg-violet-50 px-2 py-1 text-[11px] font-bold text-violet-700 hover:bg-violet-100 transition-colors"
+                          >
+                            ⏱️ تقليص
+                          </button>
+                          <button
+                            title="إنهاء الجلسة وتسليم الامتحان نهائياً"
+                            onClick={() => setDirectActionModal({ studentId: act.student_id, studentName: act.student_name, examId: act.exam_id, type: 'terminate' })}
+                            className="rounded-lg bg-red-600 px-2 py-1 text-[11px] font-extrabold text-white hover:bg-red-700 transition-colors shadow-sm"
+                          >
+                            🛑 إنهاء
+                          </button>
+                          {act.action_type === 'lock_exam' && act.status !== 'revoked' ? (
+                            <button
+                              title="إلغاء قفل الامتحان"
+                              onClick={() => setDirectActionModal({ studentId: act.student_id, studentName: act.student_name, examId: act.exam_id, type: 'unlock' })}
+                              className="rounded-lg bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700 hover:bg-emerald-100 transition-colors"
+                            >
+                              🔓 إلغاء القفل
+                            </button>
+                          ) : (
+                            <button
+                              title="قفل الامتحان مؤقتاً"
+                              onClick={() => setDirectActionModal({ studentId: act.student_id, studentName: act.student_name, examId: act.exam_id, type: 'lock' })}
+                              className="rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-200 transition-colors"
+                            >
+                              🔒 قفل
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -315,27 +365,48 @@ export default function TeacherActionCenter() {
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-extrabold text-slate-700">نوع الإجراء الجماعي:</label>
-                <div className="mt-1.5 flex gap-2">
+                <div className="mt-1.5 grid grid-cols-2 sm:grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => setBroadcastType('send_message')}
-                    className={`flex-1 rounded-xl py-2 text-xs font-black transition-all ${broadcastType === 'send_message' ? 'bg-brand-600 text-white shadow-md' : 'bg-slate-100 text-slate-600'}`}
+                    className={`rounded-xl py-2 px-3 text-xs font-black transition-all ${broadcastType === 'send_message' ? 'bg-brand-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                   >
                     💬 رسالة تنبيهية
                   </button>
                   <button
                     type="button"
+                    onClick={() => setBroadcastType('block_copy')}
+                    className={`rounded-xl py-2 px-3 text-xs font-black transition-all ${broadcastType === 'block_copy' ? 'bg-amber-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                  >
+                    📋 منع النسخ للجميع
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBroadcastType('block_paste')}
+                    className={`rounded-xl py-2 px-3 text-xs font-black transition-all ${broadcastType === 'block_paste' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                  >
+                    📥 منع اللصق للجميع
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setBroadcastType('reduce_time')}
-                    className={`flex-1 rounded-xl py-2 text-xs font-black transition-all ${broadcastType === 'reduce_time' ? 'bg-violet-600 text-white shadow-md' : 'bg-slate-100 text-slate-600'}`}
+                    className={`rounded-xl py-2 px-3 text-xs font-black transition-all ${broadcastType === 'reduce_time' ? 'bg-violet-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                   >
                     ⏱ تقليص وقت جماعي
                   </button>
                   <button
                     type="button"
                     onClick={() => setBroadcastType('lock_exam')}
-                    className={`flex-1 rounded-xl py-2 text-xs font-black transition-all ${broadcastType === 'lock_exam' ? 'bg-rose-600 text-white shadow-md' : 'bg-slate-100 text-slate-600'}`}
+                    className={`rounded-xl py-2 px-3 text-xs font-black transition-all ${broadcastType === 'lock_exam' ? 'bg-rose-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                   >
-                    🔒 إيقاف جماعي طارئ
+                    🔒 إيقاف مؤقت للجميع
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBroadcastType('terminate_session')}
+                    className={`rounded-xl py-2 px-3 text-xs font-black transition-all ${broadcastType === 'terminate_session' ? 'bg-red-700 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                  >
+                    🛑 إنهاء وتسليم جماعي
                   </button>
                 </div>
               </div>
@@ -350,6 +421,18 @@ export default function TeacherActionCenter() {
                     placeholder="مثال: تنبيه لجميع الطلاب: تبقى 10 دقائق على نهاية وقت الامتحان، نرجو مراجعة الإجابات وتسليمها..."
                     className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-800 outline-none focus:border-brand-500"
                   />
+                </div>
+              )}
+
+              {broadcastType === 'block_copy' && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-800">
+                  📋 سيتم منع جميع طلاب هذا الامتحان من نسخ أسئلة ونصوص الامتحان فوراً وإظهار تنبيه توعوي لهم.
+                </div>
+              )}
+
+              {broadcastType === 'block_paste' && (
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-xs font-bold text-indigo-800">
+                  📥 سيتم منع جميع طلاب هذا الامتحان من لصق أي محتوى خارجي داخل حقول الإجابات فوراً.
                 </div>
               )}
 
@@ -374,6 +457,19 @@ export default function TeacherActionCenter() {
               {broadcastType === 'lock_exam' && (
                 <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-700">
                   ⚠️ تحذير: هذا الإجراء سيقفل شاشة الامتحان فوراً لجميع الطلاب المتصلين في هذا الامتحان!
+                </div>
+              )}
+
+              {broadcastType === 'terminate_session' && (
+                <div className="rounded-xl border border-red-300 bg-red-50 p-3 text-xs font-bold text-red-800 space-y-2">
+                  <p>🛑 تحذير شديد: سيتم إنهاء الامتحان فوراً وتسليم إجابات جميع الطلاب الحالية للنظام بشكل نهائي!</p>
+                  <input
+                    type="text"
+                    value={broadcastMessage}
+                    onChange={(e) => setBroadcastMessage(e.target.value)}
+                    placeholder="سبب الإنهاء (اختياري)..."
+                    className="w-full rounded-lg border border-red-200 bg-white p-2 text-xs font-semibold text-slate-800 outline-none"
+                  />
                 </div>
               )}
             </div>
@@ -417,6 +513,48 @@ export default function TeacherActionCenter() {
                   placeholder="مثال: يرجى التركيز في صفحة الامتحان وعدم تبديل النوافذ..."
                   className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-800 outline-none focus:border-brand-500"
                 />
+              </div>
+            )}
+
+            {directActionModal.type === 'block-copy' && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-800">
+                📋 سيتم منع الطالب من نسخ أسئلة ونصوص الامتحان فوراً، وسيظهر له تنبيه في المتصفح.
+              </div>
+            )}
+
+            {directActionModal.type === 'allow-copy' && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-800">
+                ✓ سيتم إعادة السماح للطالب بنسخ النصوص بصورة طبيعية.
+              </div>
+            )}
+
+            {directActionModal.type === 'block-paste' && (
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-xs font-bold text-indigo-800">
+                📥 سيتم منع الطالب من لصق أي نصوص داخل إجابات الامتحان فوراً، وسيظهر له تنبيه في المتصفح.
+              </div>
+            )}
+
+            {directActionModal.type === 'allow-paste' && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-800">
+                ✓ سيتم إعادة السماح للطالب بلصق النصوص بصورة طبيعية.
+              </div>
+            )}
+
+            {directActionModal.type === 'terminate' && (
+              <div className="space-y-2">
+                <div className="rounded-xl border border-red-300 bg-red-50 p-3 text-xs font-bold text-red-800">
+                  🛑 تحذير شديد: سيتم إنهاء جلسة الامتحان للطالب فوراً، وإظهار شاشة توضح انتهاء جلسته من قبل المدرس، ثم تسليم إجاباته الحالية للنظام بشكل نهائي دون أي حلقة تحديث.
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-600">رسالة توضيحية للطالب (اختياري):</label>
+                  <input
+                    type="text"
+                    value={directMsg}
+                    onChange={(e) => setDirectMsg(e.target.value)}
+                    placeholder="مثال: تم إنهاء جلستك بسبب رصد مخالفة أمان متكررة"
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-brand-500"
+                  />
+                </div>
               </div>
             )}
 

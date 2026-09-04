@@ -62,30 +62,114 @@ export function ActionModal({ open, type, studentName, onConfirm, onCancel }) {
   const [minutes, setMinutes] = useState(5)
   useEffect(() => { setMessage(''); setMinutes(5) }, [open, type])
   if (!open) return null
-  const titles = { message: 'إرسال رسالة تحذيرية', lock: 'قفل الامتحان', unlock: 'إلغاء قفل الامتحان', 'reduce-time': 'تقليص الوقت' }
-  const colors = { message: 'bg-amber-500 hover:bg-amber-600', lock: 'bg-rose-600 hover:bg-rose-700', unlock: 'bg-emerald-600 hover:bg-emerald-700', 'reduce-time': 'bg-violet-600 hover:bg-violet-700' }
+  const titles = {
+    message: '💬 إرسال رسالة تحذيرية',
+    'block-copy': '📋 تفعيل منع النسخ',
+    'allow-copy': '📋 السماح بالنسخ',
+    'block-paste': '📥 تفعيل منع اللصق',
+    'allow-paste': '📥 السماح باللصق',
+    'reduce-time': '⏱️ تقليص وقت الامتحان',
+    lock: '🔒 قفل مؤقت للامتحان',
+    unlock: '🔓 إلغاء القفل المؤقت',
+    terminate: '🛑 إنهاء الجلسة وتسليم الامتحان نهائياً',
+  }
+  const colors = {
+    message: 'bg-amber-500 hover:bg-amber-600',
+    'block-copy': 'bg-rose-600 hover:bg-rose-700',
+    'allow-copy': 'bg-emerald-600 hover:bg-emerald-700',
+    'block-paste': 'bg-purple-600 hover:bg-purple-700',
+    'allow-paste': 'bg-emerald-600 hover:bg-emerald-700',
+    'reduce-time': 'bg-violet-600 hover:bg-violet-700',
+    lock: 'bg-rose-600 hover:bg-rose-700',
+    unlock: 'bg-emerald-600 hover:bg-emerald-700',
+    terminate: 'bg-red-700 hover:bg-red-800',
+  }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onCancel}>
-      <div className="mx-4 w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
-        <h3 className="text-lg font-extrabold text-slate-800">{titles[type]}</h3>
-        <p className="mt-1 text-sm text-slate-500">الطالب: <span className="font-bold text-slate-700">{studentName}</span></p>
+      <div className="mx-4 w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="border-b border-slate-100 pb-3">
+          <h3 className="text-lg font-black text-slate-800">{titles[type] || 'إجراء المعلم'}</h3>
+          <p className="mt-1 text-xs font-bold text-slate-500">الطالب: <span className="text-slate-800">{studentName}</span></p>
+        </div>
+
         {type === 'message' && (
-          <div className="mt-4">
-            <textarea value={message} onChange={e => setMessage(e.target.value)} rows={3} maxLength={500} placeholder="اتقِ الله في امتحانك وركّز..." className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-800 outline-none focus:border-brand-400 focus:ring-4 focus:ring-brand-500/10" />
+          <div>
+            <label className="text-xs font-bold text-slate-600">نص الرسالة التحذيرية التي ستظهر على شاشة الطالب:</label>
+            <textarea value={message} onChange={e => setMessage(e.target.value)} rows={3} maxLength={500} placeholder="مثال: يرجى التركيز في صفحة الامتحان وعدم تبديل النوافذ..." className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-800 outline-none focus:border-brand-400 focus:ring-4 focus:ring-brand-500/10" />
           </div>
         )}
+
+        {type === 'block-copy' && (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-800 leading-relaxed">
+            ⚠️ سيتم تفعيل منع النسخ فوراً في متصفح الطالب، وسيتم منعه من نسخ أي نصوص أو أسئلة (Ctrl+C).
+          </div>
+        )}
+
+        {type === 'allow-copy' && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-800 leading-relaxed">
+            ✓ سيتم إلغاء حظر النسخ والسماح للطالب بنسخ النصوص في الامتحان.
+          </div>
+        )}
+
+        {type === 'block-paste' && (
+          <div className="rounded-xl border border-purple-200 bg-purple-50 p-3 text-xs font-bold text-purple-800 leading-relaxed">
+            ⚠️ سيتم تفعيل منع اللصق فوراً في متصفح الطالب، ولن يتمكن من لصق أي إجابات خارجية داخل خانات الحل ومحررات الأسئلة المقالية (Ctrl+V).
+          </div>
+        )}
+
+        {type === 'allow-paste' && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-800 leading-relaxed">
+            ✓ سيتم إلغاء حظر اللصق والسماح للطالب بلصق النصوص في الامتحان.
+          </div>
+        )}
+
         {type === 'reduce-time' && (
-          <div className="mt-4 flex gap-2">
-            {[1, 3, 5, 10, 15].map(m => (
-              <button key={m} onClick={() => setMinutes(m)} className={`rounded-xl px-4 py-2 text-sm font-extrabold ${minutes === m ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-600'}`}>{m} د</button>
-            ))}
+          <div>
+            <label className="text-xs font-bold text-slate-600">عدد الدقائق المراد خصمها من عداد وقت الطالب:</label>
+            <div className="mt-2 flex gap-2">
+              {[1, 3, 5, 10, 15].map(m => (
+                <button key={m} onClick={() => setMinutes(m)} className={`flex-1 rounded-xl py-2 text-xs font-extrabold ${minutes === m ? 'bg-violet-600 text-white shadow-md' : 'bg-slate-100 text-slate-600'}`}>{m} د</button>
+              ))}
+            </div>
           </div>
         )}
-        {type === 'lock' && <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3"><p className="text-sm font-bold text-rose-700">⚠ هذا الإجراء سيقفل الامتحان عن الطالب!</p></div>}
-        {type === 'unlock' && <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3"><p className="text-sm font-bold text-emerald-700">✓ سيتم إلغاء القفل والسماح للطالب باستكمال الامتحان فوراً.</p></div>}
-        <div className="mt-6 flex gap-3">
-          <button onClick={onCancel} className="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-600">إلغاء</button>
-          <button onClick={() => { if (type === 'message' && !message.trim()) return; onConfirm(type === 'message' ? { message } : type === 'reduce-time' ? { minutes } : {}) }} disabled={type === 'message' && !message.trim()} className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-extrabold text-white active:scale-[.98] disabled:opacity-50 ${colors[type]}`}>تأكيد</button>
+
+        {type === 'lock' && (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-700 leading-relaxed">
+            ⚠️ سيتم قفل شاشة الامتحان للطالب مؤقتاً ومنعه من التفاعل حتى يتم إلغاء القفل.
+          </div>
+        )}
+
+        {type === 'unlock' && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-700 leading-relaxed">
+            ✓ سيتم إلغاء القفل والسماح للطالب باستكمال الامتحان فوراً.
+          </div>
+        )}
+
+        {type === 'terminate' && (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-red-300 bg-red-50 p-3.5 text-xs font-bold text-red-900 leading-relaxed">
+              🛑 <strong>تحذير إنهاء الجلسة:</strong> هذا الإجراء سيوقف محاولة الطالب فوراً، ويحفظ إجاباته الحالية ويسلمها نهائياً للنظام دون تكرار أو تعليق، ولن يتمكن من العودة للامتحان.
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-600">ملاحظة أو سبب الإنهاء (اختياري):</label>
+              <input type="text" value={message} onChange={e => setMessage(e.target.value)} placeholder="مثال: غش صريح وتكرار الخروج من الشاشة" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-brand-400" />
+            </div>
+          </div>
+        )}
+
+        <div className="flex gap-2.5 pt-2">
+          <button onClick={onCancel} className="flex-1 rounded-xl border border-slate-200 py-2.5 text-xs font-bold text-slate-600">إلغاء</button>
+          <button
+            onClick={() => {
+              if (type === 'message' && !message.trim()) return
+              onConfirm(type === 'message' || type === 'terminate' ? { message } : type === 'reduce-time' ? { minutes } : {})
+            }}
+            disabled={type === 'message' && !message.trim()}
+            className={`flex-1 rounded-xl py-2.5 text-xs font-black text-white active:scale-[.98] disabled:opacity-50 shadow-md ${colors[type] || 'bg-brand-600'}`}
+          >
+            تأكيد التنفيذ
+          </button>
         </div>
       </div>
     </div>
@@ -360,34 +444,55 @@ export function StudentTable({ students, compact = false, onAction = null }) {
                 {!compact && <td className="px-3 py-3 text-center"><span className={`text-xs font-bold ${(s.tab_hidden_count || 0) > 0 ? 'text-rose-600' : 'text-slate-300'}`}>{s.tab_hidden_count || 0}</span></td>}
                 {onAction && (
                   <td className="px-3 py-3 text-center" onClick={e => e.stopPropagation()}>
-                    <div className="flex items-center justify-center gap-1.5">
+                    <div className="flex flex-wrap items-center justify-center gap-1">
                       <button
                         title="إرسال رسالة تحذيرية تظهر للطالب في الامتحان"
                         onClick={() => onAction('message', s)}
-                        className="rounded-lg bg-amber-50 p-1.5 text-xs font-bold text-amber-700 ring-1 ring-amber-200 transition hover:bg-amber-100"
+                        className="rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-700 ring-1 ring-amber-200 transition hover:bg-amber-100"
                       >
-                        💬 رسالة
+                        💬 تحذير
+                      </button>
+                      <button
+                        title="منع النسخ للطالب (Ctrl+C)"
+                        onClick={() => onAction('block-copy', s)}
+                        className="rounded-lg bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-700 ring-1 ring-rose-200 transition hover:bg-rose-100"
+                      >
+                        📋 منع النسخ
+                      </button>
+                      <button
+                        title="منع اللصق للطالب (Ctrl+V)"
+                        onClick={() => onAction('block-paste', s)}
+                        className="rounded-lg bg-purple-50 px-2 py-1 text-[11px] font-bold text-purple-700 ring-1 ring-purple-200 transition hover:bg-purple-100"
+                      >
+                        📥 منع اللصق
                       </button>
                       <button
                         title="تقليص وقت الامتحان للطالب"
                         onClick={() => onAction('reduce-time', s)}
-                        className="rounded-lg bg-violet-50 p-1.5 text-xs font-bold text-violet-700 ring-1 ring-violet-200 transition hover:bg-violet-100"
+                        className="rounded-lg bg-violet-50 px-2 py-1 text-[11px] font-bold text-violet-700 ring-1 ring-violet-200 transition hover:bg-violet-100"
                       >
                         ⏱️ تقليص
                       </button>
                       <button
-                        title="قفل الامتحان عن الطالب فوراً"
-                        onClick={() => onAction('lock', s)}
-                        className="rounded-lg bg-rose-50 p-1.5 text-xs font-bold text-rose-700 ring-1 ring-rose-200 transition hover:bg-rose-100"
+                        title="إنهاء الجلسة فورياً وتسليم الامتحان دون تكرار"
+                        onClick={() => onAction('terminate', s)}
+                        className="rounded-lg bg-red-600 px-2 py-1 text-[11px] font-extrabold text-white shadow-sm transition hover:bg-red-700"
                       >
-                        🔒 قفل
+                        🛑 إنهاء
                       </button>
                       <button
-                        title="إلغاء قفل الامتحان عن الطالب"
-                        onClick={() => onAction('unlock', s)}
-                        className="rounded-lg bg-emerald-50 p-1.5 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200 transition hover:bg-emerald-100"
+                        title="قفل الامتحان مؤقتاً"
+                        onClick={() => onAction('lock', s)}
+                        className="rounded-lg bg-slate-100 p-1 text-[10px] font-bold text-slate-600 hover:bg-slate-200"
                       >
-                        🔓 فتح
+                        🔒
+                      </button>
+                      <button
+                        title="إلغاء قفل الامتحان"
+                        onClick={() => onAction('unlock', s)}
+                        className="rounded-lg bg-emerald-50 p-1 text-[10px] font-bold text-emerald-700 hover:bg-emerald-100"
+                      >
+                        🔓
                       </button>
                     </div>
                   </td>
@@ -742,20 +847,32 @@ function ExamDetail() {
   async function handleAction(type, params) {
     setActionModal({ open: false, type: '', student: null })
     try {
-      const endpoint = type === 'message' ? 'message' : type === 'lock' ? 'lock' : type === 'unlock' ? 'unlock' : 'reduce-time'
+      const endpoint =
+        type === 'message' ? 'message' :
+        type === 'lock' ? 'lock' :
+        type === 'unlock' ? 'unlock' :
+        type === 'reduce-time' ? 'reduce-time' :
+        type === 'block-copy' ? 'block-copy' :
+        type === 'allow-copy' ? 'allow-copy' :
+        type === 'block-paste' ? 'block-paste' :
+        type === 'allow-paste' ? 'allow-paste' :
+        type === 'terminate' ? 'terminate' : type
       const sid = actionModal.student?.student_id || actionModal.student?.id || actionModal.student?.moodle_user_id || 0
       const ssid = actionModal.student?.session_summary_id || 0
       await api.post(`/api/teacher/actions/${endpoint}`, { exam_id: parseInt(id), session_summary_id: ssid, student_id: sid, ...params })
       setConfirmModal({
         open: true,
         title: 'تم بنجاح',
-        message: type === 'message'
-          ? 'تم إرسال الرسالة وسيتلقاها الطالب في الامتحان فوراً.'
-          : type === 'lock'
-          ? 'تم قفل الامتحان عن الطالب فوراً.'
-          : type === 'unlock'
-          ? 'تم إلغاء قفل الامتحان وسيعود الطالب لاستكمال امتحانه فوراً.'
-          : `تم تقليص الوقت بـ ${params.minutes || 5} دقائق.`
+        message:
+          type === 'message' ? 'تم إرسال الرسالة وسيتلقاها الطالب في الامتحان فوراً.' :
+          type === 'block-copy' ? 'تم تفعيل منع النسخ للطالب فوراً.' :
+          type === 'allow-copy' ? 'تم السماح بالنسخ للطالب.' :
+          type === 'block-paste' ? 'تم تفعيل منع اللصق للطالب فوراً.' :
+          type === 'allow-paste' ? 'تم السماح باللصق للطالب.' :
+          type === 'lock' ? 'تم قفل الامتحان عن الطالب فوراً.' :
+          type === 'unlock' ? 'تم إلغاء قفل الامتحان وسيعود الطالب لاستكمال امتحانه فوراً.' :
+          type === 'terminate' ? 'تم إنهاء جلسة الامتحان وتسليم إجابات الطالب الحالية للنظام فوراً دون أي تكرار.' :
+          `تم تقليص الوقت بـ ${params.minutes || 5} دقائق.`
       })
     } catch (e) {
       setConfirmModal({ open: true, title: 'تنبيه', message: e.message || 'تعذر إرسال الإجراء' })

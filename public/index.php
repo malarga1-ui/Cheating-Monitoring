@@ -110,6 +110,11 @@ $router->post('/api/teacher/actions/message', [TeacherActionController::class, '
 $router->post('/api/teacher/actions/lock', [TeacherActionController::class, 'lockExam']);
 $router->post('/api/teacher/actions/unlock', [TeacherActionController::class, 'unlockExam']);
 $router->post('/api/teacher/actions/reduce-time', [TeacherActionController::class, 'reduceTime']);
+$router->post('/api/teacher/actions/block-copy', [TeacherActionController::class, 'blockCopy']);
+$router->post('/api/teacher/actions/allow-copy', [TeacherActionController::class, 'allowCopy']);
+$router->post('/api/teacher/actions/block-paste', [TeacherActionController::class, 'blockPaste']);
+$router->post('/api/teacher/actions/allow-paste', [TeacherActionController::class, 'allowPaste']);
+$router->post('/api/teacher/actions/terminate', [TeacherActionController::class, 'terminateSession']);
 $router->get('/api/teacher/actions/history', [TeacherActionController::class, 'history']);
 $router->post('/api/teacher/actions/broadcast', [TeacherActionController::class, 'broadcast']);
 $router->get('/api/teacher/actions/{examId}/log', [TeacherActionController::class, 'log']);
