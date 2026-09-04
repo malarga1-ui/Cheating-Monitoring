@@ -169,7 +169,7 @@ export default function TeacherAnalytics({ courseId: propCourseId, examId: propE
   if (!data && (examId || courseId)) return <Spinner />
 
   const hasRealData = Boolean((data?.totals?.sessions > 0) || (data?.totals?.students > 0) || (data?.top_risky?.length > 0) || (examStudents && examStudents.length > 0))
-  const isIdleDashboard = isLiveDashboard && !hasActiveExam && !hasRealData
+  const isIdleDashboard = isLiveDashboard && !hasActiveExam
   const t = data?.totals || { students: 0, sessions: 0, events: 0, suspicious: 0 }
   const examMeta = data?.exam || null
   const riskDist = (!data?.risk_distribution?.length) ? DEFAULT_RISK_DIST : data.risk_distribution
