@@ -32,7 +32,7 @@ export const SITE = {
   supervisor: { name: 'م. رامي رياض لبد', role: 'المشرف العام', photo: '/team/ramy-labad-supervisor.png' },
   team: [
     { name: 'جاد الله خالد البنا', role: 'قائد الفريق', photo: '/team/jadallah-banna.jpg', bio: '' },
-    { name: 'أحمد منير الرنتيسي', role: 'فريق التطوير', photo: '', bio: '' },
+    { name: 'أحمد منير الرنتيسي', role: 'فريق التطوير', photo: '/team/ahmed-rantisi.jpeg', bio: '' },
     { name: 'إبراهيم عطا عوض', role: 'فريق التطوير', photo: '/team/ibrahim-awad.jpeg', bio: '' },
     { name: 'محمود عبد الخالق العرجا', role: 'فريق التطوير', photo: '/team/mahmoud-alarja.jpeg', bio: '' },
   ],
