@@ -13,6 +13,7 @@ import AppTour from '../components/AppTour'
 import TeacherActionCenter from './TeacherActionCenter'
 import TeacherRiskFormula from './TeacherRiskFormula'
 import TeacherAuditReports from './TeacherAuditReports'
+import TeacherAdvisor from './TeacherAdvisor'
 
 function Spinner() {
   return (
@@ -199,6 +200,18 @@ function Header({ courses = [], activeExamsCount = 0 }) {
           >
             <span>📑</span>
             <span>سجل الأدلة والتقارير</span>
+          </Link>
+
+          <Link
+            to="/teacher/portal/advisor"
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-extrabold transition-all ${
+              p.includes('/teacher/portal/advisor')
+                ? 'bg-brand-600 text-white shadow-md shadow-brand-600/20'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            <span>💡</span>
+            <span>دليل واستراتيجيات المعلم</span>
           </Link>
 
           <Link
@@ -900,6 +913,7 @@ function MarkdownViewer({ content }) {
   const lines = content.split('\n')
   const blocks = []
   let currentList = []
+  let currentTable = []
 
   const flushList = () => {
     if (currentList.length > 0) {
@@ -908,9 +922,37 @@ function MarkdownViewer({ content }) {
     }
   }
 
+  const flushTable = () => {
+    if (currentTable.length > 0) {
+      const cleanRows = currentTable
+        .map(r => r.trim())
+        .filter(r => !/^\|?(\s*:?-+:?\s*\|?)+\s*$/.test(r))
+        .map(r => {
+          const rawCells = r.split('|')
+          if (rawCells.length > 1 && rawCells[0].trim() === '') rawCells.shift()
+          if (rawCells.length > 0 && rawCells[rawCells.length - 1].trim() === '') rawCells.pop()
+          return rawCells.map(c => c.trim())
+        })
+      if (cleanRows.length > 0) {
+        const headers = cleanRows[0]
+        const dataRows = cleanRows.slice(1)
+        blocks.push({ type: 'table', headers, rows: dataRows })
+      }
+      currentTable = []
+    }
+  }
+
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i]
     const trimmed = raw.trim()
+
+    if (trimmed.startsWith('|') && (trimmed.endsWith('|') || trimmed.includes('|'))) {
+      flushList()
+      currentTable.push(trimmed)
+      continue
+    } else {
+      flushTable()
+    }
 
     if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
       currentList.push(trimmed.substring(2))
@@ -938,6 +980,7 @@ function MarkdownViewer({ content }) {
     }
   }
   flushList()
+  flushTable()
 
   const renderInline = (text) => {
     const parts = text.split(/(\*\*.*?\*\*|`.*?`)/g)
@@ -977,6 +1020,34 @@ function MarkdownViewer({ content }) {
         }
         if (b.type === 'hr') {
           return <hr key={idx} className="my-4 border-slate-200" />
+        }
+        if (b.type === 'table') {
+          return (
+            <div key={idx} className="my-3 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+              <table className="w-full text-right text-xs border-collapse">
+                <thead className="bg-slate-50 text-slate-800 font-bold border-b border-slate-200">
+                  <tr>
+                    {b.headers.map((h, hIdx) => (
+                      <th key={hIdx} className="px-3 py-2 text-right border-l border-slate-100 last:border-l-0">
+                        {renderInline(h)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {b.rows.map((row, rIdx) => (
+                    <tr key={rIdx} className="hover:bg-slate-50/60 transition-colors">
+                      {row.map((cell, cIdx) => (
+                        <td key={cIdx} className="px-3 py-2 border-l border-slate-100 last:border-l-0 text-slate-700">
+                          {renderInline(cell)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
         }
         if (b.type === 'list') {
           return (
@@ -1811,6 +1882,7 @@ export default function TeacherPortal() {
           <Route path="dashboard" element={<LiveExamDashboard activeExams={activeExams} />} />
           <Route path="actions" element={<TeacherActionCenter />} />
           <Route path="formula" element={<TeacherRiskFormula />} />
+          <Route path="advisor" element={<TeacherAdvisor />} />
           <Route path="reports" element={<TeacherAuditReports />} />
           <Route path="courses" element={<CoursesList courses={courses} />} />
           <Route path="c/:courseId/*" element={<CourseWorkspace courses={courses} />} />

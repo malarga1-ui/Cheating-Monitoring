@@ -11,7 +11,7 @@
  */
 final class AIDetector
 {
-    private const MIN_WORDS = 20;
+    private const MIN_WORDS = 10;
 
     /**
      * Unicode-aware word count supporting Arabic, English, and multilingual text.
@@ -34,16 +34,19 @@ final class AIDetector
         
         // Characteristic AI markers (Arabic & English)
         $aiMarkersAr = [
-            'من الجدير بالذكر', 'بناءً على ذلك', 'في الختام', 'علاوة على ذلك',
+            'من الجدير بالذكر', 'بناءً على ذلك', 'بناء على ذلك', 'في الختام', 'علاوة على ذلك',
             'يجدر بالذكر', 'بالإضافة إلى ذلك', 'من ناحية أخرى', 'تلخيصاً لما سبق',
             'يلعب دوراً حاسماً', 'تجدر الإشارة إلى', 'يمكن القول بأن', 'خلاصة القول',
-            'من هذا المنطلق', 'بشكل عام', 'على وجه الخصوص', 'بصورة شاملة'
+            'من هذا المنطلق', 'بشكل عام', 'على وجه الخصوص', 'بصورة شاملة',
+            'في هذا السياق', 'بناء على ما تقدم', 'يعتبر من أهم', 'تعتبر من أهم',
+            'مما لا شك فيه', 'يمكن تلخيص', 'وتشمل ما يلي', 'تتمثل في النقاط التالية'
         ];
         $aiMarkersEn = [
             'in conclusion', 'furthermore', 'moreover', 'it is worth noting',
             'additionally', 'on the other hand', 'plays a crucial role',
             'consequently', 'in summary', 'it is important to emphasize',
-            'first and foremost', 'as mentioned previously', 'to summarize'
+            'first and foremost', 'as mentioned previously', 'to summarize',
+            'in this context', 'based on the above', 'can be summarized'
         ];
 
         $matchedMarkers = 0;

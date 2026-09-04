@@ -1035,6 +1035,8 @@ final class Aggregator
             }
 
             self::saveCopyContext($pdo, $sessionId, $accountId, $examId, $studentId);
+            self::savePasteContext($pdo, $sessionId, $accountId, $examId, $studentId);
+            AIDetector::persistScores($accountId, $sessionId);
         }
     }
 
@@ -1045,7 +1047,7 @@ final class Aggregator
     {
         $st = $pdo->prepare(
             "SELECT payload, event_time FROM events
-             WHERE session_id = :s AND account_id = :a AND event_type = 'copy'
+             WHERE session_id = :s AND (account_id = :a OR account_id = 0) AND event_type = 'copy'
              ORDER BY event_time"
         );
         $st->execute([':s' => $sessionId, ':a' => $accountId]);
@@ -1056,33 +1058,86 @@ final class Aggregator
         $updateSt = $pdo->prepare(
             "UPDATE answer_records
              SET copy_count_from_question = copy_count_from_question + 1,
-                 copy_text = CASE WHEN copy_text IS NULL THEN :ctxt ELSE copy_text END
-             WHERE session_id = :s AND account_id = :a AND exam_id = :e AND student_id = :st
-               AND question_id = :qid AND created_at >= :before AND created_at <= :after"
+                 copy_text = CASE WHEN copy_text IS NULL OR copy_text = '' THEN :ctxt ELSE copy_text END
+             WHERE session_id = :s AND (account_id = :a OR account_id = 0)
+               AND (question_id = :qid OR question_id LIKE :qidlike)"
         );
 
         foreach ($copyEvents as $ce) {
             $payload = json_decode($ce['payload'], true) ?: [];
             $meta = $payload['metadata'] ?? [];
-            $selectedText = $meta['selected_text'] ?? null;
-            $questionId = $meta['question']['question_number'] ?? $meta['question_id'] ?? null;
-            $copyTime = $ce['event_time'];
-
-            $windowBefore = date('Y-m-d H:i:s', strtotime($copyTime) - 60);
-            $windowAfter = date('Y-m-d H:i:s', strtotime($copyTime) + 60);
+            $selectedText = $meta['selected_text'] ?? ($meta['selection_text'] ?? null);
+            $questionId = (string)($meta['question']['question_number'] ?? ($meta['question_id'] ?? ($meta['question']['question_dom_id'] ?? '')));
 
             $qid = $questionId ?: '';
-            if ($qid === '') continue;
+            if ($qid === '' && $selectedText === null) continue;
+
+            $cleanQid = preg_replace('/[^0-9]/', '', $qid);
 
             $updateSt->execute([
-                ':ctxt'   => $selectedText ? mb_substr($selectedText, 0, 2000) : null,
-                ':s'      => $sessionId,
-                ':a'      => $accountId,
-                ':e'      => $examId,
-                ':st'     => $studentId,
-                ':qid'    => $qid,
-                ':before' => $windowBefore,
-                ':after'  => $windowAfter,
+                ':ctxt'    => $selectedText ? mb_substr($selectedText, 0, 2000) : null,
+                ':s'       => $sessionId,
+                ':a'       => $accountId,
+                ':qid'     => $qid ?: 'q1',
+                ':qidlike' => '%' . ($cleanQid ?: '1') . '%',
+            ]);
+        }
+    }
+
+    /**
+     * Process paste events and update answer_records with paste context and instant AI suspicion score.
+     */
+    private static function savePasteContext(PDO $pdo, string $sessionId, int $accountId, int $examId, int $studentId): void
+    {
+        $st = $pdo->prepare(
+            "SELECT payload, event_time FROM events
+             WHERE session_id = :s AND (account_id = :a OR account_id = 0) AND event_type = 'paste'
+             ORDER BY event_time ASC"
+        );
+        $st->execute([':s' => $sessionId, ':a' => $accountId]);
+        $pasteEvents = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        if (empty($pasteEvents)) return;
+
+        $updateSt = $pdo->prepare(
+            "UPDATE answer_records
+             SET paste_text = CASE WHEN paste_text IS NULL OR paste_text = '' THEN :ptxt ELSE CONCAT(paste_text, '\n---\n', :ptxt2) END,
+                 paste_length = GREATEST(paste_length, :plen),
+                 ai_score = GREATEST(ai_score, :aiscore)
+             WHERE session_id = :s AND (account_id = :a OR account_id = 0)
+               AND (question_id = :qid OR question_id LIKE :qidlike)"
+        );
+
+        foreach ($pasteEvents as $pe) {
+            $payload = json_decode($pe['payload'], true) ?: [];
+            $meta = $payload['metadata'] ?? [];
+            $pastedText = trim((string)($meta['pasted_text'] ?? ($payload['text'] ?? '')));
+            $pastedLength = (int)($meta['pasted_length'] ?? mb_strlen($pastedText));
+            $questionId = (string)($meta['question_id'] ?? ($meta['question']['question_number'] ?? ($meta['question']['question_dom_id'] ?? '')));
+
+            if ($pastedText === '' && $pastedLength === 0) continue;
+
+            // Direct academic suspicion: pasting essay chunks without typing is a hallmark of external AI answers
+            $aiScore = 0;
+            if ($pastedLength >= 80 || mb_strlen($pastedText) >= 80) {
+                $aiScore = 95;
+            } elseif ($pastedLength >= 35 || mb_strlen($pastedText) >= 35) {
+                $aiScore = 80;
+            } elseif ($pastedLength >= 15) {
+                $aiScore = 65;
+            }
+
+            $cleanQid = preg_replace('/[^0-9]/', '', $questionId);
+
+            $updateSt->execute([
+                ':ptxt'    => mb_substr($pastedText, 0, 3000),
+                ':ptxt2'   => mb_substr($pastedText, 0, 1500),
+                ':plen'    => $pastedLength,
+                ':aiscore' => $aiScore,
+                ':s'       => $sessionId,
+                ':a'       => $accountId,
+                ':qid'     => $questionId ?: 'q1',
+                ':qidlike' => '%' . ($cleanQid ?: '1') . '%',
             ]);
         }
     }

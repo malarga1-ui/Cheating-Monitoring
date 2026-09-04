@@ -149,39 +149,55 @@ final class RiskEngine
     /* ── Thesis Behavioral Score (Eq 3.2-3.6) ─────────────────── */
 
     /**
-     * Compute B_i = (n_F + n_D + n_P) / 3.
+     * Compute B_i — Refined behavioral score using calibrated focus, duration, clipboard and violation metrics.
      *
-     * n_F = min(1, F_i / F_max) — focus-change events, F_max = Q_i
-     *   F_i = tab_hidden_count + page_leave_count + blur_count
-     *   (events with duration < δ_F = 3s excluded at collection time)
-     *
-     * n_D = min(1, D_i / D_max) — absence duration, D_max = T_i (seconds)
-     *   D_i = tab_hidden_duration_ms / 1000
-     *
-     * n_P = min(1, P_i / P_max) — paste count, P_max = 2 × Q_i
-     *   P_i = paste_count + copy_count
+     * n_F = min(1, F_i / F_max) — focus-change events, scaled by question count Q
+     * n_D = min(1, D_i / D_crit) — absence duration scaled to realistic tolerance (not entire exam duration)
+     * n_P = min(1, P_weighted / P_max) — weighted paste (2x) and copy (1x) events
+     * n_V = min(1, V_i) — technical violations (devtools, fullscreen escape, screenshots)
      */
     public static function computeBehavioral(array $counters, int $Q, int $T): float
     {
-        // F_i: focus-change count
+        $Q = max(1, $Q);
+
+        // 1. F_i: focus-change count (blurs, tab hidden, page leaves)
         $F = (int)($counters['tab_hidden_count'] ?? 0)
            + (int)($counters['page_leave_count'] ?? 0)
            + (int)($counters['blur_count'] ?? 0);
-        $F_max = max(1, $Q);
-        $n_F = min(1.0, $F / $F_max);
+        // Realistic tolerance: 1 accidental blur allowed, scaled by Q (max tolerance reached at min(8, max(3, Q)))
+        $F_max = max(3, min(12, $Q));
+        $n_F = min(1.0, max(0.0, $F / (float)$F_max));
 
-        // D_i: absence duration in seconds
+        // 2. D_i: absence duration in seconds
         $D_ms = (float)($counters['tab_hidden_duration_ms'] ?? 0);
         $D = $D_ms / 1000.0;
-        $D_max = max(1.0, (float)$T);
-        $n_D = min(1.0, $D / $D_max);
+        // In an exam, leaving for > 45-90 seconds is severe. Scale D_crit between 30s and 120s based on exam duration
+        $D_crit = min(120.0, max(30.0, (float)$T * 0.06));
+        $n_D = min(1.0, max(0.0, $D / $D_crit));
 
-        // P_i: copy + paste count
-        $P = (int)($counters['paste_count'] ?? 0) + (int)($counters['copy_count'] ?? 0);
-        $P_max = max(1, 2 * $Q);
-        $n_P = min(1.0, $P / $P_max);
+        // 3. P_i: copy + paste count (pasting is penalized 2x compared to copying)
+        $pasteCount = (int)($counters['paste_count'] ?? 0);
+        $copyCount  = (int)($counters['copy_count'] ?? 0);
+        $P_weighted = ($pasteCount * 2.0) + ($copyCount * 1.0);
+        $P_max = max(2.0, min(10.0, (float)$Q * 1.2));
+        $n_P = min(1.0, $P_weighted / $P_max);
 
-        return ($n_F + $n_D + $n_P) / 3.0;
+        // 4. n_V: technical and security violations
+        $devtools = (int)($counters['devtools_count'] ?? 0);
+        $fullscreen = (int)($counters['fullscreen_exit_count'] ?? 0);
+        $screenshots = (int)($counters['screenshot_count'] ?? 0);
+        $suspiciousKeys = (int)($counters['suspicious_key_count'] ?? 0);
+        $n_V = min(1.0, ($devtools * 0.6) + ($fullscreen * 0.4) + ($screenshots * 0.5) + ($suspiciousKeys * 0.25));
+
+        // Base multi-indicator synthesis
+        $B_raw = (0.35 * $n_F) + (0.25 * $n_D) + (0.30 * $n_P) + (0.10 * $n_V);
+
+        // Synergy correlation penalty: leaving the screen frequently AND copying/pasting is classic cheating pattern
+        if ($n_F >= 0.50 && $n_P >= 0.50) {
+            $B_raw += 0.15;
+        }
+
+        return min(1.0, max(0.0, $B_raw));
     }
 
     public const PRESETS = [
@@ -208,7 +224,7 @@ final class RiskEngine
     ];
 
     /**
-     * Directly combine the 4 normalized components into a 0-100% risk score (Eq 3.16).
+     * Directly combine the 4 normalized components into a 0-100% risk score (Eq 3.16 + Non-compensatory fusion).
      */
     public static function combineComponents(float $B, float $A, float $S, float $N): float
     {
@@ -216,14 +232,36 @@ final class RiskEngine
         $wA = 3.0 / 15.0;
         $wS = 4.0 / 15.0;
         $wN = 4.0 / 15.0;
-        $score = 100.0 * ($wB * $B + $wA * $A + $wS * $S + $wN * $N);
-        return min(100.0, max(0.0, $score));
+
+        $weighted = ($wB * $B + $wA * $A + $wS * $S + $wN * $N) / ($wB + $wA + $wS + $wN);
+
+        // Availability-adjusted evaluation
+        $activeW = $wB;
+        $activeNum = $wB * $B;
+        if ($A > 0) { $activeW += $wA; $activeNum += $wA * $A; }
+        if ($S > 0) { $activeW += $wS; $activeNum += $wS * $S; }
+        if ($N > 0) { $activeW += $wN; $activeNum += $wN * $N; }
+        $activeScore = $activeW > 0 ? ($activeNum / $activeW) : $weighted;
+
+        // Dominant Threat Principle: critical cheating in one vector cannot be diluted by innocence in others
+        $maxComp = max($B, $A, $S, $N);
+        $dominant = (0.75 * $maxComp) + (0.25 * $weighted);
+
+        $finalRatio = max($weighted, max($activeScore, $dominant));
+
+        // Multi-vector synergy: if 2 or more vectors are significantly elevated
+        $elevated = ($B >= 0.5 ? 1 : 0) + ($A >= 0.5 ? 1 : 0) + ($S >= 0.5 ? 1 : 0) + ($N >= 0.5 ? 1 : 0);
+        if ($elevated >= 2) {
+            $finalRatio = min(1.0, $finalRatio + 0.10);
+        }
+
+        return min(100.0, max(0.0, round($finalRatio * 100.0, 1)));
     }
 
     /* ── Main Scoring (Eq 3.16) ────────────────────────────────── */
 
     /**
-     * Compute final risk score using availability-adjusted weighted sum.
+     * Compute final risk score using availability-adjusted weighted sum and dominant threat fusion.
      * Supports dynamic presets and custom teacher-defined weights.
      *
      * @param array $counters session_summaries columns + exam context.
@@ -236,7 +274,7 @@ final class RiskEngine
     public static function score(array $counters, ?array $customWeights = null): array
     {
         // Exam context
-        $Q = max(1, (int)($counters['question_count'] ?? 6));
+        $Q = max(1, (int)($counters['question_count'] ?? 5));
         $T_min = max(1, (int)($counters['exam_minutes'] ?? 15));
         $T = $T_min * 60; // seconds
 
@@ -268,11 +306,40 @@ final class RiskEngine
         $wN = (float)($resolvedWeights['network'] ?? (4.0 / 15.0));
 
         // 3. Availability-adjusted weighted sum (Eq 3.16)
-        $numerator   = $wB * $B + $wA * $A + $wS * $S + $wN * $N;
-        $denominator = $wB + $wA + $wS + $wN;
+        $sumAllW = max(0.001, $wB + $wA + $wS + $wN);
+        $weightedPct = 100.0 * ($wB * $B + $wA * $A + $wS * $S + $wN * $N) / $sumAllW;
 
-        $riskPct = $denominator > 0 ? 100.0 * $numerator / $denominator : 0.0;
-        $riskPct = min(100.0, max(0.0, $riskPct));
+        // Dynamic availability: only include modules that were active or reported non-zero signals
+        $activeW = $wB;
+        $activeNum = $wB * $B;
+        if ($A > 0 || !empty($counters['has_ai_evaluated'])) {
+            $activeW += $wA;
+            $activeNum += $wA * $A;
+        }
+        if ($S > 0 || !empty($counters['has_similarity_evaluated'])) {
+            $activeW += $wS;
+            $activeNum += $wS * $S;
+        }
+        if ($N > 0 || !empty($counters['has_network_evaluated'])) {
+            $activeW += $wN;
+            $activeNum += $wN * $N;
+        }
+        $activePct = $activeW > 0 ? (100.0 * $activeNum / $activeW) : $weightedPct;
+
+        // 4. Dominant Threat Fusion:
+        // If a student commits blatant behavioral cheating or AI plagiarism, the overall risk must reflect that!
+        $maxComponentPct = 100.0 * max($B, $A, $S, $N);
+        $dominantPct = (0.75 * $maxComponentPct) + (0.25 * $weightedPct);
+
+        $finalRiskPct = max($weightedPct, max($activePct, $dominantPct));
+
+        // Multi-vector synergy: if 2 or more vectors are high (e.g. Behavioral >= 50% AND AI >= 50%)
+        $elevatedCount = ($B >= 0.50 ? 1 : 0) + ($A >= 0.50 ? 1 : 0) + ($S >= 0.50 ? 1 : 0) + ($N >= 0.50 ? 1 : 0);
+        if ($elevatedCount >= 2) {
+            $finalRiskPct = min(100.0, $finalRiskPct + 10.0);
+        }
+
+        $riskPct = min(100.0, max(0.0, $finalRiskPct));
         $riskScore = (int)round($riskPct);
 
         // 4. Category breakdown for UI
