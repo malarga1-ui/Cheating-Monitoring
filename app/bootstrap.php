@@ -26,15 +26,27 @@ spl_autoload_register(function (string $class): void {
 });
 
 // ---------------------------------------------------------------
-// Error handling
+// Error handling & output buffering
 // ---------------------------------------------------------------
 error_reporting(E_ALL);
 ini_set('log_errors', '1');
-ini_set('display_errors', '1');
-ini_set('display_startup_errors', '1');
 ini_set('error_log', dirname(__DIR__) . '/storage/logs/php-error.log');
 
 $isProd = em_is_production();
+$reqPath = rawurldecode((string)parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH));
+$isApiReq = str_starts_with($reqPath, '/api/') || str_starts_with($reqPath, '/telemetry');
+
+if ($isProd || $isApiReq) {
+    ini_set('display_errors', '0');
+    ini_set('display_startup_errors', '0');
+} else {
+    ini_set('display_errors', '1');
+    ini_set('display_startup_errors', '1');
+}
+
+if (ob_get_level() === 0) {
+    ob_start();
+}
 
 set_exception_handler(function (Throwable $e) use ($isProd): void {
     error_log('[ExamMonitor] ' . $e->getMessage() . "\n" . $e->getTraceAsString());

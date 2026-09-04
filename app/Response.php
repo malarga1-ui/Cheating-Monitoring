@@ -6,6 +6,9 @@ final class Response
 {
     public static function json($data, int $status = 200): void
     {
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
         if (PHP_SAPI !== 'cli') {
             http_response_code($status);
             $origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
@@ -31,6 +34,9 @@ final class Response
 
     public static function empty(int $status = 204): void
     {
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
         if (PHP_SAPI !== 'cli') {
             http_response_code($status);
             $origin = $_SERVER['HTTP_ORIGIN'] ?? '*';

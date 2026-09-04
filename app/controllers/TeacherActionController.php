@@ -19,10 +19,10 @@ final class TeacherActionController
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 account_id INT NOT NULL,
                 exam_id INT NOT NULL,
-                session_summary_id INT NOT NULL,
-                student_id INT NOT NULL,
-                teacher_id INT NOT NULL,
-                action_type ENUM('send_message', 'lock_exam', 'reduce_time') NOT NULL,
+                session_summary_id INT NOT NULL DEFAULT 0,
+                student_id INT NOT NULL DEFAULT 0,
+                teacher_id INT NOT NULL DEFAULT 0,
+                action_type VARCHAR(32) NOT NULL,
                 message TEXT DEFAULT NULL,
                 minutes_to_reduce INT DEFAULT NULL,
                 status ENUM('pending', 'delivered', 'acknowledged', 'expired') DEFAULT 'pending',
@@ -31,8 +31,20 @@ final class TeacherActionController
                 acknowledged_at DATETIME DEFAULT NULL,
                 INDEX idx_teacher_actions_exam (exam_id, status),
                 INDEX idx_teacher_actions_session (session_summary_id, status),
-                INDEX idx_teacher_actions_account (account_id, status)
+                INDEX idx_teacher_actions_account (account_id, status),
+                INDEX idx_teacher_actions_student (student_id, status)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+            try {
+                Database::execute("ALTER TABLE teacher_actions MODIFY COLUMN action_type VARCHAR(32) NOT NULL");
+            } catch (\Throwable $e) {}
+            try {
+                Database::execute("ALTER TABLE teacher_actions MODIFY COLUMN session_summary_id INT NOT NULL DEFAULT 0");
+            } catch (\Throwable $e) {}
+            try {
+                Database::execute("ALTER TABLE teacher_actions MODIFY COLUMN student_id INT NOT NULL DEFAULT 0");
+            } catch (\Throwable $e) {}
+
             Database::execute("CREATE TABLE IF NOT EXISTS teacher_action_log (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 action_id INT NOT NULL,
@@ -40,7 +52,9 @@ final class TeacherActionController
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_action_log_action (action_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-        } catch (\Throwable $e) {}
+        } catch (\Throwable $e) {
+            error_log('[TeacherActionController::ensureTables] ' . $e->getMessage());
+        }
     }
 
     /** Validate that the teacher owns this exam. */
@@ -333,19 +347,20 @@ final class TeacherActionController
             }
 
             if ($pluginSecret === '') {
-                Response::json(['actions' => []]);
+                Response::json(['actions' => [], 'is_locked' => false, 'total_reduced_minutes' => 0]);
                 return;
             }
 
             $account = Accounts::resolveBySecret($pluginSecret);
             if ($account === null) {
-                Response::json(['actions' => []]);
+                Response::json(['actions' => [], 'is_locked' => false, 'total_reduced_minutes' => 0]);
                 return;
             }
             $accountId = (int)$account['id'];
 
             // Decrypt if client sent an encrypted envelope
-            $decrypted = Crypto::decryptIfEncrypted($body, (string)$account['sync_secret']);
+            $secretKey = (string)($account['api_secret'] ?? ($pluginSecret ?? ''));
+            $decrypted = Crypto::decryptIfEncrypted($body, $secretKey);
             if (is_array($decrypted)) {
                 $body = $decrypted;
             }
@@ -358,6 +373,14 @@ final class TeacherActionController
             $buildMatch = function(string $statusCondition) use ($accountId, $sessionId, $studentId, $examId): array {
                 $where = "(account_id = ? OR account_id = 0) AND $statusCondition";
                 $params = [$accountId];
+
+                if ($examId > 0) {
+                    $where .= ' AND (exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?) OR exam_id IN (SELECT moodle_quiz_id FROM exams WHERE id = ?) OR exam_id = 0)';
+                    $params[] = $examId;
+                    $params[] = $examId;
+                    $params[] = $examId;
+                }
+
                 $clauses = [];
 
                 if ($studentId > 0) {
@@ -373,16 +396,10 @@ final class TeacherActionController
                     $params[] = $sessionId;
                 }
 
-                if (empty($clauses) && $examId > 0) {
-                    $clauses[] = '(exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?) OR exam_id IN (SELECT moodle_quiz_id FROM exams WHERE id = ?))';
-                    $params[] = $examId;
-                    $params[] = $examId;
-                    $params[] = $examId;
-                }
+                // Match broadcast actions (student_id = 0)
+                $clauses[] = 'student_id = 0';
 
-                if (!empty($clauses)) {
-                    $where .= ' AND (' . implode(' OR ', $clauses) . ')';
-                }
+                $where .= ' AND (' . implode(' OR ', $clauses) . ')';
 
                 return [$where, $params];
             };
@@ -421,6 +438,14 @@ final class TeacherActionController
             // 2. Check if current active session or student is locked
             $isLocked = false;
             $lockParams = [$accountId];
+            $lockWhere = "(account_id = ? OR account_id = 0) AND action_type IN ('lock_exam', 'unlock_exam') AND status != 'expired'";
+            if ($examId > 0) {
+                $lockWhere .= ' AND (exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?) OR exam_id IN (SELECT moodle_quiz_id FROM exams WHERE id = ?) OR exam_id = 0)';
+                $lockParams[] = $examId;
+                $lockParams[] = $examId;
+                $lockParams[] = $examId;
+            }
+
             $lockClauses = [];
             if ($studentId > 0) {
                 $lockClauses[] = '(student_id = ? OR student_id IN (SELECT id FROM students WHERE moodle_user_id = ?) OR student_id IN (SELECT moodle_user_id FROM students WHERE id = ?))';
@@ -433,14 +458,14 @@ final class TeacherActionController
                 $lockParams[] = is_numeric($sessionId) ? (int)$sessionId : 0;
                 $lockParams[] = $sessionId;
             }
-            if (!empty($lockClauses)) {
-                $lockWhere = "(account_id = ? OR account_id = 0) AND action_type IN ('lock_exam', 'unlock_exam') AND status IN ('pending', 'delivered') AND (" . implode(' OR ', $lockClauses) . ")";
-                $latestLock = Database::fetchOne(
-                    "SELECT action_type FROM teacher_actions WHERE $lockWhere ORDER BY id DESC LIMIT 1",
-                    $lockParams
-                );
-                $isLocked = ($latestLock && $latestLock['action_type'] === 'lock_exam');
-            }
+            $lockClauses[] = 'student_id = 0';
+
+            $lockWhere .= ' AND (' . implode(' OR ', $lockClauses) . ')';
+            $latestLock = Database::fetchOne(
+                "SELECT action_type FROM teacher_actions WHERE $lockWhere ORDER BY id DESC LIMIT 1",
+                $lockParams
+            );
+            $isLocked = ($latestLock && $latestLock['action_type'] === 'lock_exam');
 
             // If any action in current pending batch is lock_exam or unlock_exam
             foreach ($result as $act) {
@@ -454,6 +479,14 @@ final class TeacherActionController
             // 3. Cumulative reduced minutes for current student or session
             $totalReducedMinutes = 0;
             $redParams = [$accountId];
+            $redWhere = "(account_id = ? OR account_id = 0) AND action_type = 'reduce_time' AND status != 'expired'";
+            if ($examId > 0) {
+                $redWhere .= ' AND (exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?) OR exam_id IN (SELECT moodle_quiz_id FROM exams WHERE id = ?) OR exam_id = 0)';
+                $redParams[] = $examId;
+                $redParams[] = $examId;
+                $redParams[] = $examId;
+            }
+
             $redClauses = [];
             if ($studentId > 0) {
                 $redClauses[] = '(student_id = ? OR student_id IN (SELECT id FROM students WHERE moodle_user_id = ?) OR student_id IN (SELECT moodle_user_id FROM students WHERE id = ?))';
@@ -466,13 +499,13 @@ final class TeacherActionController
                 $redParams[] = is_numeric($sessionId) ? (int)$sessionId : 0;
                 $redParams[] = $sessionId;
             }
-            if (!empty($redClauses)) {
-                $redWhere = "(account_id = ? OR account_id = 0) AND action_type = 'reduce_time' AND (" . implode(' OR ', $redClauses) . ")";
-                $totalReducedMinutes = (int)Database::scalar(
-                    "SELECT COALESCE(SUM(minutes_to_reduce), 0) FROM teacher_actions WHERE $redWhere",
-                    $redParams
-                );
-            }
+            $redClauses[] = 'student_id = 0';
+
+            $redWhere .= ' AND (' . implode(' OR ', $redClauses) . ')';
+            $totalReducedMinutes = (int)Database::scalar(
+                "SELECT COALESCE(SUM(minutes_to_reduce), 0) FROM teacher_actions WHERE $redWhere",
+                $redParams
+            );
 
             // Extract attempt/session info if available to assist client-side quiz actions
             $sessionInfo = null;
