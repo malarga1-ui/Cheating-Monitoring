@@ -354,31 +354,30 @@ final class TeacherActionController
             $studentId = (int)($body['student_id'] ?? ($_GET['student_id'] ?? 0));
             $examId = (int)($body['exam_id'] ?? ($_GET['exam_id'] ?? 0));
 
-            // Flexible query builder matching by session_id, student_id (internal or moodle), exam_id (internal or moodle)
+            // Flexible query builder matching by student_id (internal or moodle), session_id, or exam broadcast
             $buildMatch = function(string $statusCondition) use ($accountId, $sessionId, $studentId, $examId): array {
-                $where = "account_id = ? AND $statusCondition";
+                $where = "(account_id = ? OR account_id = 0) AND $statusCondition";
                 $params = [$accountId];
                 $clauses = [];
 
-                if ($sessionId !== '') {
-                    $clauses[] = '(session_summary_id = ? OR session_summary_id IN (SELECT id FROM session_summaries WHERE session_id = ?))';
-                    $params[] = is_numeric($sessionId) ? (int)$sessionId : 0;
-                    $params[] = $sessionId;
-                }
-
-                if ($studentId > 0 && $examId > 0) {
-                    $clauses[] = '((student_id = ? OR student_id IN (SELECT id FROM students WHERE moodle_user_id = ?) OR student_id IN (SELECT moodle_user_id FROM students WHERE id = ?)) AND (exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?) OR exam_id IN (SELECT moodle_quiz_id FROM exams WHERE id = ?)))';
-                    $params[] = $studentId;
-                    $params[] = $studentId;
-                    $params[] = $studentId;
-                    $params[] = $examId;
-                    $params[] = $examId;
-                    $params[] = $examId;
-                } elseif ($studentId > 0) {
+                if ($studentId > 0) {
                     $clauses[] = '(student_id = ? OR student_id IN (SELECT id FROM students WHERE moodle_user_id = ?) OR student_id IN (SELECT moodle_user_id FROM students WHERE id = ?))';
                     $params[] = $studentId;
                     $params[] = $studentId;
                     $params[] = $studentId;
+                }
+
+                if ($sessionId !== '') {
+                    $clauses[] = '(session_summary_id > 0 AND (session_summary_id = ? OR session_summary_id IN (SELECT id FROM session_summaries WHERE session_id = ?)))';
+                    $params[] = is_numeric($sessionId) ? (int)$sessionId : 0;
+                    $params[] = $sessionId;
+                }
+
+                if (empty($clauses) && $examId > 0) {
+                    $clauses[] = '(exam_id = ? OR exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ?) OR exam_id IN (SELECT moodle_quiz_id FROM exams WHERE id = ?))';
+                    $params[] = $examId;
+                    $params[] = $examId;
+                    $params[] = $examId;
                 }
 
                 if (!empty($clauses)) {
@@ -423,19 +422,19 @@ final class TeacherActionController
             $isLocked = false;
             $lockParams = [$accountId];
             $lockClauses = [];
-            if ($sessionId !== '') {
-                $lockClauses[] = '(session_summary_id > 0 AND (session_summary_id = ? OR session_summary_id IN (SELECT id FROM session_summaries WHERE session_id = ?)))';
-                $lockParams[] = is_numeric($sessionId) ? (int)$sessionId : 0;
-                $lockParams[] = $sessionId;
-            }
             if ($studentId > 0) {
                 $lockClauses[] = '(student_id = ? OR student_id IN (SELECT id FROM students WHERE moodle_user_id = ?) OR student_id IN (SELECT moodle_user_id FROM students WHERE id = ?))';
                 $lockParams[] = $studentId;
                 $lockParams[] = $studentId;
                 $lockParams[] = $studentId;
             }
+            if ($sessionId !== '') {
+                $lockClauses[] = '(session_summary_id > 0 AND (session_summary_id = ? OR session_summary_id IN (SELECT id FROM session_summaries WHERE session_id = ?)))';
+                $lockParams[] = is_numeric($sessionId) ? (int)$sessionId : 0;
+                $lockParams[] = $sessionId;
+            }
             if (!empty($lockClauses)) {
-                $lockWhere = "account_id = ? AND action_type IN ('lock_exam', 'unlock_exam') AND status IN ('pending', 'delivered') AND (" . implode(' OR ', $lockClauses) . ")";
+                $lockWhere = "(account_id = ? OR account_id = 0) AND action_type IN ('lock_exam', 'unlock_exam') AND status IN ('pending', 'delivered') AND (" . implode(' OR ', $lockClauses) . ")";
                 $latestLock = Database::fetchOne(
                     "SELECT action_type FROM teacher_actions WHERE $lockWhere ORDER BY id DESC LIMIT 1",
                     $lockParams
@@ -456,19 +455,19 @@ final class TeacherActionController
             $totalReducedMinutes = 0;
             $redParams = [$accountId];
             $redClauses = [];
-            if ($sessionId !== '') {
-                $redClauses[] = '(session_summary_id > 0 AND (session_summary_id = ? OR session_summary_id IN (SELECT id FROM session_summaries WHERE session_id = ?)))';
-                $redParams[] = is_numeric($sessionId) ? (int)$sessionId : 0;
-                $redParams[] = $sessionId;
-            }
             if ($studentId > 0) {
                 $redClauses[] = '(student_id = ? OR student_id IN (SELECT id FROM students WHERE moodle_user_id = ?) OR student_id IN (SELECT moodle_user_id FROM students WHERE id = ?))';
                 $redParams[] = $studentId;
                 $redParams[] = $studentId;
                 $redParams[] = $studentId;
             }
+            if ($sessionId !== '') {
+                $redClauses[] = '(session_summary_id > 0 AND (session_summary_id = ? OR session_summary_id IN (SELECT id FROM session_summaries WHERE session_id = ?)))';
+                $redParams[] = is_numeric($sessionId) ? (int)$sessionId : 0;
+                $redParams[] = $sessionId;
+            }
             if (!empty($redClauses)) {
-                $redWhere = "account_id = ? AND action_type = 'reduce_time' AND (" . implode(' OR ', $redClauses) . ")";
+                $redWhere = "(account_id = ? OR account_id = 0) AND action_type = 'reduce_time' AND (" . implode(' OR ', $redClauses) . ")";
                 $totalReducedMinutes = (int)Database::scalar(
                     "SELECT COALESCE(SUM(minutes_to_reduce), 0) FROM teacher_actions WHERE $redWhere",
                     $redParams
