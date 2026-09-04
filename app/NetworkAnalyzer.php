@@ -285,6 +285,7 @@ final class NetworkAnalyzer
 
     private static function persistGroups(PDO $db, int $accountId, int $examId, array $groups): void
     {
+        Database::ensureColumn('network_groups', 'detected_at', 'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP');
         foreach ($groups as $g) {
             if ($g['student_count'] < 2) continue;
 

@@ -169,25 +169,45 @@ final class TeacherPortalController
             $extra .= " AND e.status = 'ended' AND (e.last_event_at IS NULL OR (e.last_event_at < (UTC_TIMESTAMP() - INTERVAL 6 HOUR) AND e.last_event_at < (NOW() - INTERVAL 6 HOUR)))";
         }
 
-        $rows = Database::fetchAll(
-            "SELECT e.id, e.moodle_quiz_id, e.moodle_course_id, e.moodle_cmid,
-                    e.name, e.moodle_teacher_id, e.teacher_name,
-                    e.status, e.first_event_at, e.last_event_at, e.created_at,
-                    c.name AS course_name, c.id AS course_id,
-                    (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id) AND (ss.account_id = ? OR ss.account_id = 0)) AS students_count,
-                    (SELECT COUNT(DISTINCT ss.session_id)  FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id) AND (ss.account_id = ? OR ss.account_id = 0)) AS sessions_count,
-                    (SELECT COUNT(*) FROM events ev WHERE (ev.moodle_quiz_id = e.moodle_quiz_id OR ev.moodle_quiz_id = e.id) AND (ev.account_id = ? OR ev.account_id = 0)) AS events_count,
-                    (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id) AND (ss.account_id = ? OR ss.account_id = 0) AND ss.risk_level IN ('high','critical')) AS suspicious_count
-               FROM exams e
-               LEFT JOIN courses c ON c.moodle_course_id = e.moodle_course_id AND (c.account_id = e.account_id OR c.account_id = ? OR c.account_id = 0)
-              WHERE (e.account_id = ? OR e.account_id = 0) AND e.moodle_course_id IN ($in)" . $extra . "
-              ORDER BY 
-                CASE WHEN e.last_event_at IS NOT NULL AND (e.last_event_at >= (UTC_TIMESTAMP() - INTERVAL 2 HOUR) OR e.last_event_at >= (NOW() - INTERVAL 2 HOUR)) THEN 0 ELSE 1 END ASC,
-                e.last_event_at DESC, 
-                e.id DESC
-              LIMIT 300",
-            $params
-        );
+        try {
+            $rows = Database::fetchAll(
+                "SELECT e.id, e.moodle_quiz_id, e.moodle_course_id, e.moodle_cmid,
+                        e.name, e.moodle_teacher_id, e.teacher_name,
+                        e.status, e.first_event_at, e.last_event_at, e.created_at,
+                        c.name AS course_name, c.id AS course_id,
+                        (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id) AND (ss.account_id = ? OR ss.account_id = 0)) AS students_count,
+                        (SELECT COUNT(DISTINCT ss.session_id)  FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id) AND (ss.account_id = ? OR ss.account_id = 0)) AS sessions_count,
+                        (SELECT COUNT(*) FROM events ev WHERE (ev.moodle_quiz_id = e.moodle_quiz_id OR ev.moodle_quiz_id = e.id) AND (ev.account_id = ? OR ev.account_id = 0)) AS events_count,
+                        (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id) AND (ss.account_id = ? OR ss.account_id = 0) AND ss.risk_level IN ('high','critical')) AS suspicious_count
+                   FROM exams e
+                   LEFT JOIN courses c ON c.moodle_course_id = e.moodle_course_id AND (c.account_id = e.account_id OR c.account_id = ? OR c.account_id = 0)
+                  WHERE (e.account_id = ? OR e.account_id = 0) AND e.moodle_course_id IN ($in)" . $extra . "
+                  ORDER BY 
+                    CASE WHEN e.last_event_at IS NOT NULL AND (e.last_event_at >= (UTC_TIMESTAMP() - INTERVAL 2 HOUR) OR e.last_event_at >= (NOW() - INTERVAL 2 HOUR)) THEN 0 ELSE 1 END ASC,
+                    e.last_event_at DESC, 
+                    e.id DESC
+                  LIMIT 300",
+                $params
+            );
+        } catch (\Throwable $e) {
+            try {
+                $rows = Database::fetchAll(
+                    "SELECT e.id, e.moodle_quiz_id, e.moodle_course_id, e.moodle_cmid,
+                            e.name, e.moodle_teacher_id, e.teacher_name,
+                            e.status, e.first_event_at, e.last_event_at, e.created_at,
+                            c.name AS course_name, c.id AS course_id,
+                            0 AS students_count, 0 AS sessions_count, 0 AS events_count, 0 AS suspicious_count
+                       FROM exams e
+                       LEFT JOIN courses c ON c.moodle_course_id = e.moodle_course_id AND (c.account_id = e.account_id OR c.account_id = ? OR c.account_id = 0)
+                      WHERE (e.account_id = ? OR e.account_id = 0) AND e.moodle_course_id IN ($in)
+                      ORDER BY e.last_event_at DESC, e.id DESC
+                      LIMIT 300",
+                    [$accountId, $accountId]
+                );
+            } catch (\Throwable $e2) {
+                $rows = [];
+            }
+        }
 
         // Fallback: if session_summaries is empty but events exist, count from events
         foreach ($rows as &$r) {
@@ -664,32 +684,76 @@ final class TeacherPortalController
             NetworkAnalyzer::analyzeExam($accountId, $eId);
         } catch (\Throwable $e) {}
 
-        $groups = Database::fetchAll(
-            'SELECT id, ip_address, student_count, student_ids, risk_level, detected_at
-             FROM network_groups
-             WHERE (account_id = ? OR account_id = 0) AND (exam_id = ? OR exam_id = ?)
-             ORDER BY student_count DESC, risk_level DESC',
-            [$accountId, $eId, $qId]
-        );
+        Database::ensureColumn('network_groups', 'detected_at', 'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP');
 
-        // Enrich with student names
+        $groups = [];
+        try {
+            $groups = Database::fetchAll(
+                'SELECT id, ip_address, student_count, student_ids, risk_level, detected_at
+                 FROM network_groups
+                 WHERE (account_id = ? OR account_id = 0) AND (exam_id = ? OR exam_id = ?)
+                 ORDER BY student_count DESC, risk_level DESC',
+                [$accountId, $eId, $qId]
+            );
+        } catch (\Throwable $e) {
+            try {
+                $groups = Database::fetchAll(
+                    'SELECT id, ip_address, student_count, student_ids, risk_level, COALESCE(created_at, NOW()) AS detected_at
+                     FROM network_groups
+                     WHERE (account_id = ? OR account_id = 0) AND (exam_id = ? OR exam_id = ?)
+                     ORDER BY student_count DESC, risk_level DESC',
+                    [$accountId, $eId, $qId]
+                );
+            } catch (\Throwable $e2) {
+                $groups = [];
+            }
+        }
+
+        // Enrich with student names across all groups in one query
+        $allSids = [];
+        foreach ($groups as $g) {
+            $rawSids = json_decode($g['student_ids'] ?? '[]', true);
+            if (is_array($rawSids)) {
+                foreach ($rawSids as $sid) {
+                    $val = (int)$sid;
+                    if ($val > 0) $allSids[] = $val;
+                }
+            }
+        }
+        $allSids = array_values(array_unique($allSids));
+        $nameMap = [];
+        if (!empty($allSids)) {
+            $placeholders = implode(',', array_fill(0, count($allSids), '?'));
+            $students = Database::fetchAll(
+                "SELECT id, moodle_user_id, fullname, username FROM students WHERE (id IN ($placeholders) OR moodle_user_id IN ($placeholders)) AND (account_id = ? OR account_id = 0)",
+                array_merge($allSids, $allSids, [$accountId])
+            );
+            foreach ($students as $s) {
+                $info = [
+                    'fullname' => $s['fullname'],
+                    'username' => $s['username'],
+                ];
+                $nameMap[(int)$s['id']] = $info;
+                if (!empty($s['moodle_user_id'])) {
+                    $nameMap[(int)$s['moodle_user_id']] = $info;
+                }
+            }
+        }
+
         $allGroups = [];
         foreach ($groups as $g) {
-            $sids = json_decode($g['student_ids'], true) ?: [];
+            $rawSids = json_decode($g['student_ids'] ?? '[]', true);
             $names = [];
-            if ($sids !== []) {
-                $placeholders = implode(',', array_fill(0, count($sids), '?'));
-                $students = Database::fetchAll(
-                    "SELECT id, moodle_user_id, fullname, username FROM students WHERE (id IN ($placeholders) OR moodle_user_id IN ($placeholders)) AND (account_id = ? OR account_id = 0)",
-                    array_merge($sids, $sids, [$accountId])
-                );
-                foreach ($students as $s) {
-                    $sid = (int)($s['moodle_user_id'] ?: $s['id']);
+            if (is_array($rawSids)) {
+                foreach ($rawSids as $rawSid) {
+                    $sid = (int)$rawSid;
+                    if ($sid <= 0) continue;
+                    $info = $nameMap[$sid] ?? ['fullname' => "طالب #$sid", 'username' => ''];
                     $names[] = [
                         'id'            => $sid,
                         'student_id'    => $sid,
-                        'fullname'      => $s['fullname'],
-                        'username'      => $s['username'],
+                        'fullname'      => $info['fullname'],
+                        'username'      => $info['username'],
                         'session_count' => 1,
                     ];
                 }
@@ -703,8 +767,8 @@ final class TeacherPortalController
                 'students'      => $names,
                 'risk_level'    => $g['risk_level'],
                 'risk_score'    => $riskScore,
-                'detected_at'   => $g['detected_at'],
-                'last_seen'     => $g['detected_at'],
+                'detected_at'   => $g['detected_at'] ?? date('Y-m-d H:i:s'),
+                'last_seen'     => $g['detected_at'] ?? date('Y-m-d H:i:s'),
             ];
         }
 
@@ -727,25 +791,49 @@ final class TeacherPortalController
             SimilarityEngine::analyzeExam($accountId, $eId);
         } catch (\Throwable $e) {}
 
-        $pairs = Database::fetchAll(
-            'SELECT sp.student_a_id, sp.student_b_id, sp.similarity_pct,
-                    sp.matching_questions, sp.total_questions, sp.detected_at, sp.question_details
-             FROM similarity_pairs sp
-             WHERE (sp.account_id = ? OR sp.account_id = 0) AND (sp.exam_id = ? OR sp.exam_id = ?) AND sp.similarity_pct >= ?
-             ORDER BY sp.similarity_pct DESC
-             LIMIT 200',
-            [$accountId, $eId, $qId, $minSim]
-        );
+        Database::ensureColumn('similarity_pairs', 'question_details', 'MEDIUMTEXT NULL');
+        Database::ensureColumn('similarity_pairs', 'detected_at', 'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP');
+
+        $pairs = [];
+        try {
+            $pairs = Database::fetchAll(
+                'SELECT sp.student_a_id, sp.student_b_id, sp.similarity_pct,
+                        sp.matching_questions, sp.total_questions, sp.detected_at, sp.question_details
+                 FROM similarity_pairs sp
+                 WHERE (sp.account_id = ? OR sp.account_id = 0) AND (sp.exam_id = ? OR sp.exam_id = ?) AND sp.similarity_pct >= ?
+                 ORDER BY sp.similarity_pct DESC
+                 LIMIT 200',
+                [$accountId, $eId, $qId, $minSim]
+            );
+        } catch (\Throwable $e) {
+            try {
+                $pairs = Database::fetchAll(
+                    'SELECT sp.student_a_id, sp.student_b_id, sp.similarity_pct,
+                            sp.matching_questions, sp.total_questions,
+                            COALESCE(sp.created_at, NOW()) AS detected_at,
+                            NULL AS question_details
+                     FROM similarity_pairs sp
+                     WHERE (sp.account_id = ? OR sp.account_id = 0) AND (sp.exam_id = ? OR sp.exam_id = ?) AND sp.similarity_pct >= ?
+                     ORDER BY sp.similarity_pct DESC
+                     LIMIT 200',
+                    [$accountId, $eId, $qId, $minSim]
+                );
+            } catch (\Throwable $e2) {
+                $pairs = [];
+            }
+        }
 
         // Enrich with student names
         $allIds = [];
         foreach ($pairs as $p) {
-            $allIds[] = (int)$p['student_a_id'];
-            $allIds[] = (int)$p['student_b_id'];
+            $sa = (int)($p['student_a_id'] ?? 0);
+            $sb = (int)($p['student_b_id'] ?? 0);
+            if ($sa > 0) $allIds[] = $sa;
+            if ($sb > 0) $allIds[] = $sb;
         }
-        $allIds = array_unique($allIds);
+        $allIds = array_values(array_unique($allIds));
         $nameMap = [];
-        if ($allIds !== []) {
+        if (!empty($allIds)) {
             $placeholders = implode(',', array_fill(0, count($allIds), '?'));
             $students = Database::fetchAll(
                 "SELECT id, moodle_user_id, fullname, username FROM students WHERE (id IN ($placeholders) OR moodle_user_id IN ($placeholders)) AND (account_id = ? OR account_id = 0)",
@@ -1029,34 +1117,82 @@ final class TeacherPortalController
 
         $examFilter = ($examId > 0) ? " AND (ng.exam_id = $examId OR e.id = $examId OR e.moodle_quiz_id = $examId)" : "";
 
-        $groups = Database::fetchAll(
-            "SELECT ng.id, ng.ip_address, ng.student_count, ng.student_ids, ng.risk_level, ng.detected_at,
-                    ng.exam_id, e.name AS exam_name
-             FROM network_groups ng
-             JOIN exams e ON (e.id = ng.exam_id OR e.moodle_quiz_id = ng.exam_id)
-             WHERE (ng.account_id = ? OR ng.account_id = 0) AND e.moodle_course_id IN ($in) $examFilter
-             ORDER BY ng.student_count DESC, ng.risk_level DESC
-             LIMIT 200",
-            [$accountId]
-        );
+        Database::ensureColumn('network_groups', 'detected_at', 'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP');
+
+        $groups = [];
+        try {
+            $groups = Database::fetchAll(
+                "SELECT ng.id, ng.ip_address, ng.student_count, ng.student_ids, ng.risk_level, ng.detected_at,
+                        ng.exam_id, e.name AS exam_name
+                 FROM network_groups ng
+                 JOIN exams e ON (e.id = ng.exam_id OR e.moodle_quiz_id = ng.exam_id)
+                 WHERE (ng.account_id = ? OR ng.account_id = 0) AND e.moodle_course_id IN ($in) $examFilter
+                 ORDER BY ng.student_count DESC, ng.risk_level DESC
+                 LIMIT 200",
+                [$accountId]
+            );
+        } catch (\Throwable $e) {
+            try {
+                $groups = Database::fetchAll(
+                    "SELECT ng.id, ng.ip_address, ng.student_count, ng.student_ids, ng.risk_level,
+                            COALESCE(ng.created_at, NOW()) AS detected_at, ng.exam_id, e.name AS exam_name
+                     FROM network_groups ng
+                     JOIN exams e ON (e.id = ng.exam_id OR e.moodle_quiz_id = ng.exam_id)
+                     WHERE (ng.account_id = ? OR ng.account_id = 0) AND e.moodle_course_id IN ($in) $examFilter
+                     ORDER BY ng.student_count DESC, ng.risk_level DESC
+                     LIMIT 200",
+                    [$accountId]
+                );
+            } catch (\Throwable $e2) {
+                $groups = [];
+            }
+        }
+
+        // Enrich with student names across all groups in one batch
+        $allSids = [];
+        foreach ($groups as $g) {
+            $rawSids = json_decode($g['student_ids'] ?? '[]', true);
+            if (is_array($rawSids)) {
+                foreach ($rawSids as $sid) {
+                    $val = (int)$sid;
+                    if ($val > 0) $allSids[] = $val;
+                }
+            }
+        }
+        $allSids = array_values(array_unique($allSids));
+        $nameMap = [];
+        if (!empty($allSids)) {
+            $placeholders = implode(',', array_fill(0, count($allSids), '?'));
+            $students = Database::fetchAll(
+                "SELECT id, moodle_user_id, fullname, username FROM students WHERE (id IN ($placeholders) OR moodle_user_id IN ($placeholders)) AND (account_id = ? OR account_id = 0)",
+                array_merge($allSids, $allSids, [$accountId])
+            );
+            foreach ($students as $s) {
+                $info = [
+                    'fullname' => $s['fullname'],
+                    'username' => $s['username'],
+                ];
+                $nameMap[(int)$s['id']] = $info;
+                if (!empty($s['moodle_user_id'])) {
+                    $nameMap[(int)$s['moodle_user_id']] = $info;
+                }
+            }
+        }
 
         $allGroups = [];
         foreach ($groups as $g) {
-            $sids = json_decode($g['student_ids'], true) ?: [];
+            $rawSids = json_decode($g['student_ids'] ?? '[]', true);
             $names = [];
-            if ($sids !== []) {
-                $placeholders = implode(',', array_fill(0, count($sids), '?'));
-                $students = Database::fetchAll(
-                    "SELECT id, moodle_user_id, fullname, username FROM students WHERE (id IN ($placeholders) OR moodle_user_id IN ($placeholders)) AND (account_id = ? OR account_id = 0)",
-                    array_merge($sids, $sids, [$accountId])
-                );
-                foreach ($students as $s) {
-                    $sid = (int)($s['moodle_user_id'] ?: $s['id']);
+            if (is_array($rawSids)) {
+                foreach ($rawSids as $rawSid) {
+                    $sid = (int)$rawSid;
+                    if ($sid <= 0) continue;
+                    $info = $nameMap[$sid] ?? ['fullname' => "طالب #$sid", 'username' => ''];
                     $names[] = [
                         'id'            => $sid,
                         'student_id'    => $sid,
-                        'fullname'      => $s['fullname'],
-                        'username'      => $s['username'],
+                        'fullname'      => $info['fullname'],
+                        'username'      => $info['username'],
                         'session_count' => 1,
                     ];
                 }
@@ -1070,8 +1206,8 @@ final class TeacherPortalController
                 'students'      => $names,
                 'risk_level'    => $g['risk_level'],
                 'risk_score'    => $riskScore,
-                'detected_at'   => $g['detected_at'],
-                'last_seen'     => $g['detected_at'],
+                'detected_at'   => $g['detected_at'] ?? date('Y-m-d H:i:s'),
+                'last_seen'     => $g['detected_at'] ?? date('Y-m-d H:i:s'),
                 'exam_id'       => (int)$g['exam_id'],
                 'exam_name'     => $g['exam_name'] ?? '',
             ];
@@ -1109,36 +1245,68 @@ final class TeacherPortalController
             try { SimilarityEngine::analyzeExam($accountId, (int)$er['id']); } catch (\Throwable $e) {}
         }
 
+        Database::ensureColumn('similarity_pairs', 'question_details', 'MEDIUMTEXT NULL');
+        Database::ensureColumn('similarity_pairs', 'detected_at', 'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP');
+
         $minSim = max(0, min(100, (int)($_GET['min_similarity'] ?? 10)));
         $examFilter = ($examId > 0) ? " AND (sp.exam_id = $examId OR e.id = $examId OR e.moodle_quiz_id = $examId)" : "";
 
-        $pairs = Database::fetchAll(
-            "SELECT sp.student_a_id, sp.student_b_id, sp.similarity_pct,
-                    sp.matching_questions, sp.total_questions, sp.detected_at,
-                    sp.exam_id, sp.question_details, e.name AS exam_name
-             FROM similarity_pairs sp
-             JOIN exams e ON (e.id = sp.exam_id OR e.moodle_quiz_id = sp.exam_id)
-             WHERE (sp.account_id = ? OR sp.account_id = 0) AND e.moodle_course_id IN ($in) $examFilter AND sp.similarity_pct >= ?
-             ORDER BY sp.similarity_pct DESC
-             LIMIT 200",
-            [$accountId, $minSim]
-        );
+        $pairs = [];
+        try {
+            $pairs = Database::fetchAll(
+                "SELECT sp.student_a_id, sp.student_b_id, sp.similarity_pct,
+                        sp.matching_questions, sp.total_questions, sp.detected_at,
+                        sp.exam_id, sp.question_details, e.name AS exam_name
+                 FROM similarity_pairs sp
+                 JOIN exams e ON (e.id = sp.exam_id OR e.moodle_quiz_id = sp.exam_id)
+                 WHERE (sp.account_id = ? OR sp.account_id = 0) AND e.moodle_course_id IN ($in) $examFilter AND sp.similarity_pct >= ?
+                 ORDER BY sp.similarity_pct DESC
+                 LIMIT 200",
+                [$accountId, $minSim]
+            );
+        } catch (\Throwable $e) {
+            try {
+                $pairs = Database::fetchAll(
+                    "SELECT sp.student_a_id, sp.student_b_id, sp.similarity_pct,
+                            sp.matching_questions, sp.total_questions,
+                            COALESCE(sp.created_at, NOW()) AS detected_at,
+                            sp.exam_id, NULL AS question_details, e.name AS exam_name
+                     FROM similarity_pairs sp
+                     JOIN exams e ON (e.id = sp.exam_id OR e.moodle_quiz_id = sp.exam_id)
+                     WHERE (sp.account_id = ? OR sp.account_id = 0) AND e.moodle_course_id IN ($in) $examFilter AND sp.similarity_pct >= ?
+                     ORDER BY sp.similarity_pct DESC
+                     LIMIT 200",
+                    [$accountId, $minSim]
+                );
+            } catch (\Throwable $e2) {
+                $pairs = [];
+            }
+        }
 
         $allIds = [];
         foreach ($pairs as $p) {
-            $allIds[] = (int)$p['student_a_id'];
-            $allIds[] = (int)$p['student_b_id'];
+            $sa = (int)($p['student_a_id'] ?? 0);
+            $sb = (int)($p['student_b_id'] ?? 0);
+            if ($sa > 0) $allIds[] = $sa;
+            if ($sb > 0) $allIds[] = $sb;
         }
-        $allIds = array_unique($allIds);
+        $allIds = array_values(array_unique($allIds));
         $nameMap = [];
-        if ($allIds !== []) {
+        if (!empty($allIds)) {
             $placeholders = implode(',', array_fill(0, count($allIds), '?'));
             $students = Database::fetchAll(
-                "SELECT id, fullname, username FROM students WHERE (id IN ($placeholders) OR moodle_user_id IN ($placeholders)) AND (account_id = ? OR account_id = 0)",
+                "SELECT id, moodle_user_id, fullname, username FROM students WHERE (id IN ($placeholders) OR moodle_user_id IN ($placeholders)) AND (account_id = ? OR account_id = 0)",
                 array_merge($allIds, $allIds, [$accountId])
             );
             foreach ($students as $s) {
-                $nameMap[(int)$s['id']] = ['fullname' => $s['fullname'], 'username' => $s['username']];
+                $info = [
+                    'fullname' => $s['fullname'],
+                    'username' => $s['username'],
+                ];
+                $nameMap[(int)$s['id']] = $info;
+                if (!empty($s['moodle_user_id'])) {
+                    $nameMap[(int)$s['moodle_user_id']] = $info;
+                }
             }
         }
 
@@ -1497,27 +1665,58 @@ final class TeacherPortalController
             [$actualStudentId, $moodleUserId, $accountId]
         );
 
-        $answers = Database::fetchAll(
-            "SELECT ar.question_id, ar.question_type, ar.answer_text, ar.answer_length,
-                    ar.word_count, ar.typing_duration_ms, ar.change_count,
-                    ar.ai_score, ar.ai_detection_provider, ar.created_at,
-                    COALESCE(ar.similarity_score, 0) AS similarity_score,
-                    COALESCE(ar.similarity_with_student_id, 0) AS similarity_with_student_id,
-                    st_p.fullname AS partner_name, st_p.fullname AS partner_fullname, st_p.username AS partner_username,
-                    e.name AS exam_name, ar.exam_id
-               FROM answer_records ar
-               INNER JOIN (
-                  SELECT MAX(id) AS max_id FROM answer_records
-                  WHERE (student_id = ? OR student_id = ?) AND (account_id = ? OR account_id = 0)
-                  GROUP BY question_id
-               ) latest ON ar.id = latest.max_id
-               JOIN exams e ON (e.id = ar.exam_id OR e.moodle_quiz_id = ar.exam_id)
-               LEFT JOIN students st_p ON (st_p.id = ar.similarity_with_student_id OR st_p.moodle_user_id = ar.similarity_with_student_id)
-              WHERE (ar.student_id = ? OR ar.student_id = ?) AND (ar.account_id = ? OR ar.account_id = 0) AND e.moodle_course_id IN ($in)
-              ORDER BY ar.created_at DESC
-              LIMIT 100",
-            [$actualStudentId, $moodleUserId, $accountId, $actualStudentId, $moodleUserId, $accountId]
-        );
+        Database::ensureColumn('answer_records', 'similarity_score', 'SMALLINT NOT NULL DEFAULT 0');
+        Database::ensureColumn('answer_records', 'similarity_with_student_id', 'INT UNSIGNED NOT NULL DEFAULT 0');
+
+        $answers = [];
+        try {
+            $answers = Database::fetchAll(
+                "SELECT ar.question_id, ar.question_type, ar.answer_text, ar.answer_length,
+                        ar.word_count, ar.typing_duration_ms, ar.change_count,
+                        ar.ai_score, ar.ai_detection_provider, ar.created_at,
+                        COALESCE(ar.similarity_score, 0) AS similarity_score,
+                        COALESCE(ar.similarity_with_student_id, 0) AS similarity_with_student_id,
+                        st_p.fullname AS partner_name, st_p.fullname AS partner_fullname, st_p.username AS partner_username,
+                        e.name AS exam_name, ar.exam_id
+                   FROM answer_records ar
+                   INNER JOIN (
+                      SELECT MAX(id) AS max_id FROM answer_records
+                      WHERE (student_id = ? OR student_id = ?) AND (account_id = ? OR account_id = 0)
+                      GROUP BY question_id
+                   ) latest ON ar.id = latest.max_id
+                   JOIN exams e ON (e.id = ar.exam_id OR e.moodle_quiz_id = ar.exam_id)
+                   LEFT JOIN students st_p ON (st_p.id = ar.similarity_with_student_id OR st_p.moodle_user_id = ar.similarity_with_student_id)
+                  WHERE (ar.student_id = ? OR ar.student_id = ?) AND (ar.account_id = ? OR ar.account_id = 0) AND e.moodle_course_id IN ($in)
+                  ORDER BY ar.created_at DESC
+                  LIMIT 100",
+                [$actualStudentId, $moodleUserId, $accountId, $actualStudentId, $moodleUserId, $accountId]
+            );
+        } catch (\Throwable $e) {
+            try {
+                $answers = Database::fetchAll(
+                    "SELECT ar.question_id, ar.question_type, ar.answer_text, ar.answer_length,
+                            ar.word_count, ar.typing_duration_ms, ar.change_count,
+                            ar.ai_score, ar.ai_detection_provider, ar.created_at,
+                            0 AS similarity_score,
+                            0 AS similarity_with_student_id,
+                            '' AS partner_name, '' AS partner_fullname, '' AS partner_username,
+                            e.name AS exam_name, ar.exam_id
+                       FROM answer_records ar
+                       INNER JOIN (
+                          SELECT MAX(id) AS max_id FROM answer_records
+                          WHERE (student_id = ? OR student_id = ?) AND (account_id = ? OR account_id = 0)
+                          GROUP BY question_id
+                       ) latest ON ar.id = latest.max_id
+                       JOIN exams e ON (e.id = ar.exam_id OR e.moodle_quiz_id = ar.exam_id)
+                      WHERE (ar.student_id = ? OR ar.student_id = ?) AND (ar.account_id = ? OR ar.account_id = 0) AND e.moodle_course_id IN ($in)
+                      ORDER BY ar.created_at DESC
+                      LIMIT 100",
+                    [$actualStudentId, $moodleUserId, $accountId, $actualStudentId, $moodleUserId, $accountId]
+                );
+            } catch (\Throwable $e2) {
+                $answers = [];
+            }
+        }
 
         // Dynamic fallback / enrichment for answers: if similarity is missing or 0 for essay answers, compare against peers
         require_once __DIR__ . '/../SimilarityEngine.php';

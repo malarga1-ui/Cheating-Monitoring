@@ -94,4 +94,21 @@ final class Database
             throw $e;
         }
     }
+
+    /**
+     * Ensure a column exists on a table without failing or depending on MySQL version syntax.
+     */
+    public static function ensureColumn(string $table, string $column, string $definition): void
+    {
+        try {
+            $db = self::connection();
+            $stmt = $db->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
+            $stmt->execute([$column]);
+            if (!$stmt->fetch()) {
+                $db->exec("ALTER TABLE `$table` ADD COLUMN `$column` $definition");
+            }
+        } catch (\Throwable $e) {
+            // Ignore if table doesn't exist or permissions issue
+        }
+    }
 }

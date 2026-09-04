@@ -55,8 +55,8 @@ final class SimilarityEngine
     private static function persistQuestionSimilarityScores(PDO $db, array $pairs): void
     {
         try {
-            $db->exec("ALTER TABLE answer_records ADD COLUMN IF NOT EXISTS similarity_score SMALLINT NOT NULL DEFAULT 0");
-            $db->exec("ALTER TABLE answer_records ADD COLUMN IF NOT EXISTS similarity_with_student_id INT UNSIGNED NOT NULL DEFAULT 0");
+            Database::ensureColumn('answer_records', 'similarity_score', 'SMALLINT NOT NULL DEFAULT 0');
+            Database::ensureColumn('answer_records', 'similarity_with_student_id', 'INT UNSIGNED NOT NULL DEFAULT 0');
 
             $updQSt = $db->prepare(
                 "UPDATE answer_records 
@@ -654,35 +654,59 @@ final class SimilarityEngine
 
     private static function persistPairs(PDO $db, int $accountId, int $intId, int $quizId, array $pairs): void
     {
-        try {
-            $db->exec("ALTER TABLE similarity_pairs ADD COLUMN IF NOT EXISTS question_details MEDIUMTEXT NULL");
-        } catch (\Throwable $e) {}
+        Database::ensureColumn('similarity_pairs', 'question_details', 'MEDIUMTEXT NULL');
+        Database::ensureColumn('similarity_pairs', 'detected_at', 'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP');
 
         $db->prepare("DELETE FROM similarity_pairs WHERE (account_id = :a OR account_id = 0) AND (exam_id = :eid OR exam_id = :qid)")
            ->execute([':a' => $accountId, ':eid' => $intId, ':qid' => $quizId]);
 
-        $st = $db->prepare(
-            "INSERT INTO similarity_pairs
-             (account_id, exam_id, student_a_id, student_b_id, similarity_pct, matching_questions, total_questions, question_details)
-             VALUES (:a, :e, :sa, :sb, :sim, :match, :total, :details)"
-        );
+        try {
+            $st = $db->prepare(
+                "INSERT INTO similarity_pairs
+                 (account_id, exam_id, student_a_id, student_b_id, similarity_pct, matching_questions, total_questions, question_details)
+                 VALUES (:a, :e, :sa, :sb, :sim, :match, :total, :details)"
+            );
 
-        foreach ($pairs as $p) {
-            $stA = (int)$p['student_a'];
-            $stB = (int)$p['student_b'];
-            if ($stA === $stB) continue; // Never persist self-pair
+            foreach ($pairs as $p) {
+                $stA = (int)$p['student_a'];
+                $stB = (int)$p['student_b'];
+                if ($stA === $stB) continue; // Never persist self-pair
 
-            $detailsJson = !empty($p['question_details']) ? json_encode($p['question_details'], JSON_UNESCAPED_UNICODE) : null;
-            $st->execute([
-                ':a'       => $accountId,
-                ':e'       => $intId,
-                ':sa'      => min($stA, $stB),
-                ':sb'      => max($stA, $stB),
-                ':sim'     => (int)$p['similarity'],
-                ':match'   => (int)$p['matched'],
-                ':total'   => (int)$p['total'],
-                ':details' => $detailsJson,
-            ]);
+                $detailsJson = !empty($p['question_details']) ? json_encode($p['question_details'], JSON_UNESCAPED_UNICODE) : null;
+                $st->execute([
+                    ':a'       => $accountId,
+                    ':e'       => $intId,
+                    ':sa'      => min($stA, $stB),
+                    ':sb'      => max($stA, $stB),
+                    ':sim'     => (int)$p['similarity'],
+                    ':match'   => (int)$p['matched'],
+                    ':total'   => (int)$p['total'],
+                    ':details' => $detailsJson,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            // Fallback insert without question_details if column cannot be added
+            try {
+                $stFallback = $db->prepare(
+                    "INSERT INTO similarity_pairs
+                     (account_id, exam_id, student_a_id, student_b_id, similarity_pct, matching_questions, total_questions)
+                     VALUES (:a, :e, :sa, :sb, :sim, :match, :total)"
+                );
+                foreach ($pairs as $p) {
+                    $stA = (int)$p['student_a'];
+                    $stB = (int)$p['student_b'];
+                    if ($stA === $stB) continue;
+                    $stFallback->execute([
+                        ':a'     => $accountId,
+                        ':e'     => $intId,
+                        ':sa'    => min($stA, $stB),
+                        ':sb'    => max($stA, $stB),
+                        ':sim'   => (int)$p['similarity'],
+                        ':match' => (int)$p['matched'],
+                        ':total' => (int)$p['total'],
+                    ]);
+                }
+            } catch (\Throwable $e2) {}
         }
     }
 

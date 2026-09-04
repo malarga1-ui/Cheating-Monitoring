@@ -83,6 +83,9 @@ $router->get('/api/teacher/exams', [TeacherPortalController::class, 'exams']);
 $router->get('/api/teacher/exams/network', [TeacherPortalController::class, 'allNetworkGroups']);
 $router->get('/api/teacher/exams/similarity', [TeacherPortalController::class, 'allSimilarityPairs']);
 $router->get('/api/teacher/exams/devices', [TeacherPortalController::class, 'allMultiDevice']);
+$router->get('/api/teacher/network', [TeacherPortalController::class, 'allNetworkGroups']);
+$router->get('/api/teacher/similarity', [TeacherPortalController::class, 'allSimilarityPairs']);
+$router->get('/api/teacher/devices', [TeacherPortalController::class, 'allMultiDevice']);
 // Students list + detail
 $router->get('/api/teacher/students', [TeacherPortalController::class, 'students']);
 $router->get('/api/teacher/students/{id}', [TeacherPortalController::class, 'studentDetail']);

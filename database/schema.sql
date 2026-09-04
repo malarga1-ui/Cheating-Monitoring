@@ -501,6 +501,7 @@ CREATE TABLE IF NOT EXISTS similarity_pairs (
     similarity_pct       SMALLINT NOT NULL DEFAULT 0,
     matching_questions   INT UNSIGNED NOT NULL DEFAULT 0,
     total_questions      INT UNSIGNED NOT NULL DEFAULT 0,
+    question_details     MEDIUMTEXT NULL,
     detected_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_similarity_pairs_exam (account_id, exam_id),
