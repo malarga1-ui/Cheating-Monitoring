@@ -271,7 +271,9 @@ function ExamTable({ exams, onRowClick }) {
 /* ─── Shared: Student Table ──────────────────────────────── */
 export function StudentTable({ students, compact = false, onAction = null }) {
   const navigate = useNavigate()
-  if (!Array.isArray(students) || students.length === 0) return <Empty />
+  if (!Array.isArray(students) || students.length === 0) {
+    return <Empty text="في انتظار دخول الطلاب للامتحان... بمجرد بدء أي طالب ستظهر جلسته وتحليلاته هنا فوراً وبشكل لحظي." />
+  }
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm">
       <div className="overflow-x-auto">
@@ -1637,45 +1639,104 @@ function CourseWorkspace({ courses }) {
 /* ─── LIVE EXAM DASHBOARD TAB ────────────────────────────── */
 function LiveExamDashboard({ activeExams = [] }) {
   const [selectedExamId, setSelectedExamId] = useState(null)
+  const [allExams, setAllExams] = useState([])
 
+  // Load all exams once and refresh every 10s so teacher can select any exam
+  useEffect(() => {
+    function fetchAll() {
+      api.get('/api/teacher/exams')
+        .then(d => setAllExams(Array.isArray(d) ? d : []))
+        .catch(() => setAllExams([]))
+    }
+    fetchAll()
+    const timer = setInterval(fetchAll, 10000)
+    return () => clearInterval(timer)
+  }, [])
+
+  // Auto-selection logic:
+  // 1. If there is an active exam with students, prioritize it
+  // 2. Otherwise auto-select the latest exam from teacher's courses so the dashboard is live-ready
   useEffect(() => {
     if (activeExams.length > 0) {
       if (!selectedExamId || !activeExams.some(e => String(e.id) === String(selectedExamId))) {
         setSelectedExamId(activeExams[0].id)
       }
-    } else {
-      setSelectedExamId(null)
+    } else if (allExams.length > 0 && !selectedExamId) {
+      setSelectedExamId(allExams[0].id)
     }
-  }, [activeExams])
+  }, [activeExams, allExams, selectedExamId])
+
+  const effectiveExamId = selectedExamId || (activeExams.length > 0 ? activeExams[0].id : (allExams.length > 0 ? allExams[0].id : null))
+  const isCurrentlyStreaming = activeExams.length > 0 && activeExams.some(e => String(e.id) === String(effectiveExamId))
+  const displayExams = activeExams.length > 0 ? activeExams : allExams
 
   return (
     <div className="space-y-6">
-      {activeExams.length > 1 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 shadow-sm">
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-3 w-3">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-500" />
+      {/* Real-time exam status & selector banner */}
+      {displayExams.length > 0 && (
+        <div className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4 shadow-sm transition-all ${
+          isCurrentlyStreaming
+            ? 'border-emerald-300 bg-gradient-to-r from-emerald-50 via-white to-teal-50/70 ring-1 ring-emerald-200'
+            : 'border-sky-300 bg-gradient-to-r from-sky-50 via-white to-indigo-50/70 ring-1 ring-sky-200'
+        }`}>
+          <div className="flex items-center gap-3">
+            <span className="relative flex h-3.5 w-3.5">
+              <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${
+                isCurrentlyStreaming ? 'bg-emerald-400' : 'bg-sky-400'
+              }`} />
+              <span className={`relative inline-flex h-3.5 w-3.5 rounded-full ${
+                isCurrentlyStreaming ? 'bg-emerald-500' : 'bg-sky-500'
+              }`} />
             </span>
-            <span className="text-xs font-extrabold text-emerald-800">
-              يوجد ({activeExams.length}) امتحانات نشطة حالياً للمدرس — اختر الامتحان للمراقبة:
-            </span>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className={`text-xs font-black tracking-wide ${
+                  isCurrentlyStreaming ? 'text-emerald-900' : 'text-sky-900'
+                }`}>
+                  {isCurrentlyStreaming ? '🔴 بث مباشر نشط الآن' : '📡 وضع الاستعداد للبث اللحظي (Standby)'}
+                </span>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
+                  isCurrentlyStreaming ? 'bg-emerald-100 text-emerald-800' : 'bg-sky-100 text-sky-800'
+                }`}>
+                  {isCurrentlyStreaming ? `نشط (${activeExams.length})` : 'جاهز لاستقبال الطلاب'}
+                </span>
+              </div>
+              <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
+                {isCurrentlyStreaming
+                  ? 'يتم تحديث نشاط الطلاب وأحداث الغش كل 3 ثوانٍ مباشرة.'
+                  : 'بمجرد أن يدخل أي طالب الامتحان، ستتدفق إشاراته وأحداثه فوراً إلى هذه الشاشة.'}
+              </p>
+            </div>
           </div>
-          <select
-            value={selectedExamId || ''}
-            onChange={(e) => setSelectedExamId(e.target.value)}
-            className="rounded-xl border border-emerald-300 bg-white px-3.5 py-2 text-xs font-extrabold text-slate-700 outline-none shadow-sm"
-          >
-            {activeExams.map(ex => (
-              <option key={ex.id} value={ex.id}>
-                {ex.name} ({ex.course_name || 'مساق'})
-              </option>
-            ))}
-          </select>
+
+          {displayExams.length > 1 && (
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-bold text-slate-600 shrink-0">الامتحان المعروض:</label>
+              <select
+                value={effectiveExamId || ''}
+                onChange={(e) => setSelectedExamId(e.target.value)}
+                className={`rounded-xl border bg-white px-3.5 py-2 text-xs font-extrabold outline-none shadow-sm transition-all ${
+                  isCurrentlyStreaming
+                    ? 'border-emerald-300 text-slate-700 hover:border-emerald-400'
+                    : 'border-sky-300 text-slate-700 hover:border-sky-400'
+                }`}
+              >
+                {displayExams.map(ex => (
+                  <option key={ex.id} value={ex.id}>
+                    {ex.name} ({ex.course_name || 'مساق'})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       )}
 
-      <TeacherAnalytics examId={selectedExamId} isLiveDashboard={true} hasActiveExam={activeExams.length > 0} />
+      <TeacherAnalytics
+        examId={effectiveExamId}
+        isLiveDashboard={true}
+        hasActiveExam={Boolean(effectiveExamId || activeExams.length > 0)}
+      />
     </div>
   )
 }

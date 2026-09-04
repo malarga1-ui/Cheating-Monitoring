@@ -32,25 +32,25 @@ final class TeacherPortalController
 
         $row = Database::fetchOne(
             "SELECT
-                (SELECT COUNT(*) FROM exams e WHERE e.account_id = ? AND e.moodle_course_id IN ($in)) AS exams_count,
-                (SELECT COUNT(*) FROM exams e WHERE e.account_id = ? AND e.moodle_course_id IN ($in) AND e.status = 'active' AND e.last_event_at >= (NOW() - INTERVAL 30 MINUTE)) AS active_exams,
-                (SELECT COUNT(*) FROM courses c WHERE c.account_id = ? AND c.moodle_course_id IN ($in)) AS courses_count,
+                (SELECT COUNT(*) FROM exams e WHERE (e.account_id = ? OR e.account_id = 0) AND e.moodle_course_id IN ($in)) AS exams_count,
+                (SELECT COUNT(*) FROM exams e WHERE (e.account_id = ? OR e.account_id = 0) AND e.moodle_course_id IN ($in) AND (e.status = 'active' OR e.last_event_at >= (UTC_TIMESTAMP() - INTERVAL 2 HOUR) OR e.last_event_at >= (NOW() - INTERVAL 2 HOUR))) AS active_exams,
+                (SELECT COUNT(*) FROM courses c WHERE (c.account_id = ? OR c.account_id = 0) AND c.moodle_course_id IN ($in)) AS courses_count,
                 (SELECT COUNT(DISTINCT s.id)
                    FROM students s
-                  WHERE s.account_id = ?
-                    AND IF(s.moodle_user_id > 0, s.moodle_user_id, s.id) IN (SELECT cs.student_id FROM course_students cs WHERE cs.account_id = ? AND cs.moodle_course_id IN ($in))
-                    AND s.username NOT IN (SELECT username FROM teachers WHERE account_id = ? AND username != '')
+                  WHERE (s.account_id = ? OR s.account_id = 0)
+                    AND IF(s.moodle_user_id > 0, s.moodle_user_id, s.id) IN (SELECT cs.student_id FROM course_students cs WHERE (cs.account_id = ? OR cs.account_id = 0) AND cs.moodle_course_id IN ($in))
+                    AND s.username NOT IN (SELECT username FROM teachers WHERE (account_id = ? OR account_id = 0) AND username != '')
                 ) AS students_count,
                 (SELECT COUNT(DISTINCT ss.session_id)
                    FROM session_summaries ss
-                   JOIN exams e3 ON e3.id = ss.exam_id 
-                  WHERE e3.account_id = ? AND e3.moodle_course_id IN ($in)) AS sessions_count,
+                   JOIN exams e3 ON (e3.id = ss.exam_id OR e3.moodle_quiz_id = ss.exam_id)
+                  WHERE (e3.account_id = ? OR e3.account_id = 0) AND e3.moodle_course_id IN ($in)) AS sessions_count,
                 (SELECT COUNT(DISTINCT ss.student_id)
                    FROM session_summaries ss
-                   JOIN exams e4 ON e4.id = ss.exam_id 
-                  WHERE e4.account_id = ? AND e4.moodle_course_id IN ($in)
+                   JOIN exams e4 ON (e4.id = ss.exam_id OR e4.moodle_quiz_id = ss.exam_id)
+                  WHERE (e4.account_id = ? OR e4.account_id = 0) AND e4.moodle_course_id IN ($in)
                     AND ss.risk_level IN ('high','critical')) AS suspicious_count",
-            [$accountId, $accountId, $accountId, $accountId, $accountId, $accountId, $accountId, $accountId, $accountId]
+            [$accountId, $accountId, $accountId, $accountId, $accountId, $accountId, $accountId, $accountId]
         );
 
         Response::ok([
@@ -130,6 +130,9 @@ final class TeacherPortalController
         $accountId = Auth::accountId();
         $teacherId = Auth::teacherId();
 
+        // Incrementally aggregate any pending events so last_event_at and session_summaries are 100% up to date
+        try { Aggregator::process(2000); } catch (\Throwable $e) {}
+
         $ids = Teachers::courseIds($accountId, $teacherId);
         $courseId = (int)($_GET['course_id'] ?? 0);
         if ($courseId > 0) {
@@ -143,7 +146,7 @@ final class TeacherPortalController
 
         $search = trim((string)($_GET['q'] ?? ''));
         $status = (string)($_GET['status'] ?? '');
-        $params = [$accountId];
+        $params = [$accountId, $accountId, $accountId, $accountId, $accountId, $accountId];
         $extra = '';
         if ($search !== '') {
             $extra .= ' AND (e.name LIKE ? OR e.moodle_quiz_id LIKE ?)';
@@ -151,9 +154,19 @@ final class TeacherPortalController
             $params[] = "%$search%";
         }
         if ($status === 'active') {
-            $extra .= " AND (e.last_event_at IS NOT NULL AND e.last_event_at >= (NOW() - INTERVAL 30 MINUTE))";
+            $extra .= " AND (
+                e.status = 'active'
+                OR (e.last_event_at IS NOT NULL AND (e.last_event_at >= (UTC_TIMESTAMP() - INTERVAL 6 HOUR) OR e.last_event_at >= (NOW() - INTERVAL 6 HOUR)))
+                OR EXISTS (
+                    SELECT 1 FROM events ev 
+                     WHERE (ev.moodle_quiz_id = e.moodle_quiz_id OR ev.moodle_quiz_id = e.id)
+                       AND (ev.account_id = ? OR ev.account_id = 0)
+                       AND (ev.received_at >= (NOW() - INTERVAL 4 HOUR) OR ev.event_time >= (UTC_TIMESTAMP() - INTERVAL 4 HOUR))
+                )
+            )";
+            $params[] = $accountId;
         } elseif ($status === 'ended') {
-            $extra .= " AND (e.last_event_at IS NULL OR e.last_event_at < (NOW() - INTERVAL 30 MINUTE))";
+            $extra .= " AND e.status = 'ended' AND (e.last_event_at IS NULL OR (e.last_event_at < (UTC_TIMESTAMP() - INTERVAL 6 HOUR) AND e.last_event_at < (NOW() - INTERVAL 6 HOUR)))";
         }
 
         $rows = Database::fetchAll(
@@ -161,39 +174,36 @@ final class TeacherPortalController
                     e.name, e.moodle_teacher_id, e.teacher_name,
                     e.status, e.first_event_at, e.last_event_at, e.created_at,
                     c.name AS course_name, c.id AS course_id,
-                    (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE ss.exam_id = e.id AND ss.account_id = e.account_id) AS students_count,
-                    (SELECT COUNT(DISTINCT ss.session_id)  FROM session_summaries ss WHERE ss.exam_id = e.id AND ss.account_id = e.account_id) AS sessions_count,
-                    (SELECT COUNT(*) FROM events ev WHERE ev.moodle_quiz_id = e.moodle_quiz_id AND ev.account_id = e.account_id) AS events_count,
-                    (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE ss.exam_id = e.id AND ss.account_id = e.account_id AND ss.risk_level IN ('high','critical')) AS suspicious_count
+                    (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id) AND (ss.account_id = ? OR ss.account_id = 0)) AS students_count,
+                    (SELECT COUNT(DISTINCT ss.session_id)  FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id) AND (ss.account_id = ? OR ss.account_id = 0)) AS sessions_count,
+                    (SELECT COUNT(*) FROM events ev WHERE (ev.moodle_quiz_id = e.moodle_quiz_id OR ev.moodle_quiz_id = e.id) AND (ev.account_id = ? OR ev.account_id = 0)) AS events_count,
+                    (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss WHERE (ss.exam_id = e.id OR ss.exam_id = e.moodle_quiz_id) AND (ss.account_id = ? OR ss.account_id = 0) AND ss.risk_level IN ('high','critical')) AS suspicious_count
                FROM exams e
-               LEFT JOIN courses c ON c.moodle_course_id = e.moodle_course_id AND c.account_id = e.account_id
-              WHERE e.account_id = ? AND e.moodle_course_id IN ($in)" . $extra . "
-              ORDER BY e.last_event_at DESC
+               LEFT JOIN courses c ON c.moodle_course_id = e.moodle_course_id AND (c.account_id = e.account_id OR c.account_id = ? OR c.account_id = 0)
+              WHERE (e.account_id = ? OR e.account_id = 0) AND e.moodle_course_id IN ($in)" . $extra . "
+              ORDER BY 
+                CASE WHEN e.last_event_at IS NOT NULL AND (e.last_event_at >= (UTC_TIMESTAMP() - INTERVAL 2 HOUR) OR e.last_event_at >= (NOW() - INTERVAL 2 HOUR)) THEN 0 ELSE 1 END ASC,
+                e.last_event_at DESC, 
+                e.id DESC
               LIMIT 300",
             $params
         );
 
         // Fallback: if session_summaries is empty but events exist, count from events
-        $fallbackNeeded = array_filter($rows, fn($r) => (int)$r['students_count'] === 0 && (int)$r['events_count'] > 0);
-        if (!empty($fallbackNeeded)) {
-            $quizIds = array_map(fn($r) => (int)$r['moodle_quiz_id'], $fallbackNeeded);
-            $placeholders = implode(',', array_fill(0, count($quizIds), '?'));
-            $evCounts = Database::fetchAll(
-                "SELECT moodle_quiz_id, COUNT(DISTINCT moodle_user_id) AS cnt
-                 FROM events WHERE moodle_quiz_id IN ($placeholders) AND account_id = ?
-                 GROUP BY moodle_quiz_id",
-                array_merge($quizIds, [$accountId])
-            );
-            $evMap = array_column($evCounts, 'cnt', 'moodle_quiz_id');
-            foreach ($rows as &$r) {
-                if ((int)$r['students_count'] === 0 && (int)$r['events_count'] > 0) {
-                    $qid = (int)$r['moodle_quiz_id'];
-                    $r['students_count'] = (int)($evMap[$qid] ?? 0);
-                    $r['sessions_count'] = $r['students_count'];
-                }
+        foreach ($rows as &$r) {
+            if ((int)$r['students_count'] === 0 && (int)$r['events_count'] > 0) {
+                $qid = (int)$r['moodle_quiz_id'];
+                $eid = (int)$r['id'];
+                $evCount = Database::fetchOne(
+                    "SELECT COUNT(DISTINCT moodle_user_id) AS cnt
+                     FROM events WHERE (moodle_quiz_id = ? OR moodle_quiz_id = ?) AND (account_id = ? OR account_id = 0)",
+                    [$qid, $eid, $accountId]
+                );
+                $r['students_count'] = (int)($evCount['cnt'] ?? 0);
+                $r['sessions_count'] = $r['students_count'];
             }
-            unset($r);
         }
+        unset($r);
 
         Response::ok(array_map(function ($r) {
             return [
@@ -397,6 +407,9 @@ final class TeacherPortalController
         $accountId = Auth::accountId();
         $teacherId = Auth::teacherId();
 
+        // Incrementally aggregate any pending events
+        try { Aggregator::process(2000); } catch (\Throwable $e) {}
+
         $ids = Teachers::courseIds($accountId, $teacherId);
         $courseId = (int)($_GET['course_id'] ?? 0);
         $examId = (int)($_GET['exam_id'] ?? 0);
@@ -406,9 +419,9 @@ final class TeacherPortalController
             $examRows = Database::fetchAll(
                 "SELECT e.id, e.moodle_quiz_id, e.moodle_course_id, e.name, e.status, c.name AS course_name
                    FROM exams e
-                   LEFT JOIN courses c ON c.moodle_course_id = e.moodle_course_id AND c.account_id = e.account_id
+                   LEFT JOIN courses c ON c.moodle_course_id = e.moodle_course_id AND (c.account_id = e.account_id OR c.account_id = ? OR c.account_id = 0)
                   WHERE (e.id = ? OR e.moodle_quiz_id = ?) AND (e.account_id = ? OR e.account_id = 0)",
-                [$examId, $examId, $accountId]
+                [$accountId, $examId, $examId, $accountId]
             );
             if (!empty($examRows) && Auth::teacherOwnsExam($accountId, $teacherId, $examRows[0])) {
                 $singleExam = [
@@ -435,9 +448,9 @@ final class TeacherPortalController
             $examRows = Database::fetchAll(
                 "SELECT e.id, e.moodle_quiz_id, e.name, e.status, c.name AS course_name
                    FROM exams e
-                   LEFT JOIN courses c ON c.moodle_course_id = e.moodle_course_id AND c.account_id = e.account_id
-                  WHERE e.account_id = ? AND e.moodle_course_id IN ($in)",
-                [$accountId]
+                   LEFT JOIN courses c ON c.moodle_course_id = e.moodle_course_id AND (c.account_id = e.account_id OR c.account_id = ? OR c.account_id = 0)
+                  WHERE (e.account_id = ? OR e.account_id = 0) AND e.moodle_course_id IN ($in)",
+                [$accountId, $accountId]
             );
         }
 
@@ -460,9 +473,22 @@ final class TeacherPortalController
                 ) AND (ev.account_id = ? OR ev.account_id = 0)) AS events_count,
                 (SELECT COUNT(DISTINCT ss.student_id) FROM session_summaries ss
                    WHERE ss.exam_id IN ($ein) AND (ss.account_id = ? OR ss.account_id = 0) AND ss.risk_level IN ('high','critical')) AS suspicious_count,
-                (SELECT COUNT(*) FROM exams e3 WHERE e3.id IN ($ein) AND (e3.last_event_at >= NOW() - INTERVAL 30 MINUTE)) AS active_exams",
-            [$accountId, $accountId, $accountId, $accountId, $accountId]
+                (SELECT COUNT(*) FROM exams e3 WHERE e3.id IN ($ein) AND (e3.status = 'active' OR e3.last_event_at >= (UTC_TIMESTAMP() - INTERVAL 2 HOUR) OR e3.last_event_at >= (NOW() - INTERVAL 2 HOUR))) AS active_exams",
+            [$accountId, $accountId, $accountId, $accountId]
         );
+
+        // Fallback: If sessions_count is 0 but events exist, populate from events table
+        if ((int)($totals['students_count'] ?? 0) === 0 && (int)($totals['events_count'] ?? 0) > 0) {
+            $evCounts = Database::fetchOne(
+                "SELECT COUNT(DISTINCT ev.moodle_user_id) AS st_cnt, COUNT(DISTINCT ev.session_id) AS sess_cnt
+                 FROM events ev WHERE ev.moodle_quiz_id IN (
+                     SELECT e2.moodle_quiz_id FROM exams e2 WHERE (e2.id IN ($ein) OR e2.moodle_quiz_id IN ($ein)) AND (e2.account_id = ? OR e2.account_id = 0)
+                 ) AND (ev.account_id = ? OR ev.account_id = 0)",
+                [$accountId, $accountId]
+            );
+            $totals['students_count'] = (int)($evCounts['st_cnt'] ?? 0);
+            $totals['sessions_count'] = (int)($evCounts['sess_cnt'] ?? 0);
+        }
 
         // Risk distribution
         $riskDist = Database::fetchAll(
