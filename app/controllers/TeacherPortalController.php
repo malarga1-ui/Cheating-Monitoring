@@ -1550,7 +1550,11 @@ final class TeacherPortalController
 
                 foreach ($otherAnswers as $oa) {
                     $otherText = (string)($oa['answer_text'] ?? '');
-                    $score = (int)round(\App\SimilarityEngine::computeHybridSimilarity($ansText, $otherText) * 100);
+                    try {
+                        $score = (int)round(SimilarityEngine::computeHybridSimilarity($ansText, $otherText) * 100);
+                    } catch (\Throwable $e) {
+                        $score = 0;
+                    }
                     if ($score > $bestSim) {
                         $bestSim = $score;
                         $bestPartner = (string)($oa['fullname'] ?? ('طالب #' . $oa['student_id']));
