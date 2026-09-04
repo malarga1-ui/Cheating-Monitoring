@@ -62,36 +62,50 @@ final class SimilarityEngine
                 "UPDATE answer_records 
                  SET similarity_score = GREATEST(similarity_score, :sim),
                      similarity_with_student_id = CASE WHEN :sim >= similarity_score THEN :partner_id ELSE similarity_with_student_id END
-                 WHERE session_id = :sid AND (question_id = :qid OR question_id = :norm_qid)"
+                 WHERE (student_id = :st OR session_id = :sid)
+                   AND (question_id = :qid_exact OR question_id = :qid_norm OR question_id LIKE :qid_like)"
             );
 
             foreach ($pairs as $p) {
                 if ($p['similarity'] < 10) continue;
-                $sA = $p['session_a'];
-                $sB = $p['session_b'];
+                $sA = (string)($p['session_a'] ?? '');
+                $sB = (string)($p['session_b'] ?? '');
                 $stA = (int)$p['student_a'];
                 $stB = (int)$p['student_b'];
+                if ($stA === $stB) continue; // Skip self
+
                 $qMatches = $p['question_matches'] ?? [];
 
-                foreach ($qMatches as $qid => $qInfo) {
+                foreach ($qMatches as $k => $qInfo) {
                     $simVal = (int)($qInfo['similarity'] ?? 0);
                     if ($simVal <= 0) continue;
-                    $normQid = preg_replace('/^.*?(\d+)$/', 'q$1', (string)$qid);
 
+                    $qidA = (string)($qInfo['qid_a'] ?? $k);
+                    $qidB = (string)($qInfo['qid_b'] ?? $k);
+                    $normQid = (string)($qInfo['norm_qid'] ?? $k);
+                    preg_match('/(\d+)$/', $normQid, $numM);
+                    $numSuffix = isset($numM[1]) ? ('%' . $numM[1]) : '%';
+
+                    // Update Student A's answer record
                     $updQSt->execute([
                         ':sim'        => $simVal,
                         ':partner_id' => $stB,
+                        ':st'         => $stA,
                         ':sid'        => $sA,
-                        ':qid'        => (string)$qid,
-                        ':norm_qid'   => $normQid,
+                        ':qid_exact'  => $qidA,
+                        ':qid_norm'   => $normQid,
+                        ':qid_like'   => $numSuffix,
                     ]);
 
+                    // Update Student B's answer record
                     $updQSt->execute([
                         ':sim'        => $simVal,
                         ':partner_id' => $stA,
+                        ':st'         => $stB,
                         ':sid'        => $sB,
-                        ':qid'        => (string)$qid,
-                        ':norm_qid'   => $normQid,
+                        ':qid_exact'  => $qidB,
+                        ':qid_norm'   => $normQid,
+                        ':qid_like'   => $numSuffix,
                     ]);
                 }
             }
@@ -118,7 +132,15 @@ final class SimilarityEngine
         }
 
         $byStudent = self::groupByStudent($allAnswers);
-        $targetAnswers = $byStudent[$sessionId] ?? null;
+        $targetAnswers = null;
+        $targetKey = null;
+        foreach ($byStudent as $stKey => $info) {
+            if ($info['session_id'] === $sessionId || (string)$stKey === (string)$sessionId) {
+                $targetAnswers = $info;
+                $targetKey = $stKey;
+                break;
+            }
+        }
         if (!$targetAnswers) {
             return ['max_similarity' => 0, 'match_count' => 0, 'worst_pair' => null];
         }
@@ -127,8 +149,8 @@ final class SimilarityEngine
         $maxSim = 0;
         $matchCount = 0;
 
-        foreach ($byStudent as $otherSid => $otherAnswers) {
-            if ($otherSid === $sessionId) continue;
+        foreach ($byStudent as $otherKey => $otherAnswers) {
+            if ($otherKey === $targetKey) continue;
             $result = self::compareTwo($targetAnswers, $otherAnswers);
             if ($result['similarity'] > $maxSim) {
                 $maxSim = $result['similarity'];
@@ -239,16 +261,21 @@ final class SimilarityEngine
     {
         $groups = [];
         foreach ($answers as $a) {
-            $sid = $a['session_id'];
-            $qid = $a['question_id'];
-            if (!isset($groups[$sid])) {
-                $groups[$sid] = [
-                    'student_id' => (int)$a['student_id'],
+            $stId = (int)$a['student_id'];
+            if ($stId <= 0) continue;
+            $qid = (string)$a['question_id'];
+            if (!isset($groups[$stId])) {
+                $groups[$stId] = [
+                    'student_id' => $stId,
+                    'session_id' => (string)$a['session_id'],
                     'questions'  => [],
                 ];
             }
-            if (!isset($groups[$sid]['questions'][$qid])) {
-                $groups[$sid]['questions'][$qid] = $a;
+            // Keep the latest or longest answer for this question
+            if (!isset($groups[$stId]['questions'][$qid]) ||
+                mb_strlen((string)($a['answer_text'] ?? '')) >= mb_strlen((string)($groups[$stId]['questions'][$qid]['answer_text'] ?? ''))) {
+                $groups[$stId]['questions'][$qid] = $a;
+                $groups[$stId]['session_id'] = (string)$a['session_id'];
             }
         }
         return $groups;
@@ -258,25 +285,30 @@ final class SimilarityEngine
 
     private static function compareAllPairs(array $byStudent): array
     {
-        $students = array_keys($byStudent);
-        $count = count($students);
+        $studentIds = array_values(array_keys($byStudent));
+        $count = count($studentIds);
         $pairs = [];
 
         for ($i = 0; $i < $count; $i++) {
             for ($j = $i + 1; $j < $count; $j++) {
-                $a = $byStudent[$students[$i]];
-                $b = $byStudent[$students[$j]];
+                $stA = $studentIds[$i];
+                $stB = $studentIds[$j];
+                if ($stA === $stB) continue; // NEVER pair a student with themselves
+
+                $a = $byStudent[$stA];
+                $b = $byStudent[$stB];
                 $result = self::compareTwo($a, $b);
 
                 $pairs[] = [
-                    'session_a'         => $students[$i],
-                    'session_b'         => $students[$j],
-                    'student_a'         => $a['student_id'],
-                    'student_b'         => $b['student_id'],
+                    'session_a'         => $a['session_id'] ?? '',
+                    'session_b'         => $b['session_id'] ?? '',
+                    'student_a'         => min($stA, $stB),
+                    'student_b'         => max($stA, $stB),
                     'similarity'        => $result['similarity'],
                     'matched'           => $result['matched'],
                     'total'             => $result['total'],
                     'question_matches'  => $result['question_matches'] ?? [],
+                    'question_details'  => $result['question_details'] ?? [],
                 ];
             }
         }
@@ -316,17 +348,44 @@ final class SimilarityEngine
         $matchingQuestions = 0;
         $maxSimilarity = 0.0;
         $questionMatches = [];
+        $questionDetails = [];
 
         if ($total >= 1) {
-            foreach ($commonQ as $qid => $aAns) {
-                $bAns = $bNorm[$qid];
-                $textA = $aAns['answer_text'] ?? '';
-                $textB = $bAns['answer_text'] ?? '';
+            foreach ($commonQ as $normQid => $aAns) {
+                $bAns = $bNorm[$normQid];
+                $textA = (string)($aAns['answer_text'] ?? '');
+                $textB = (string)($bAns['answer_text'] ?? '');
 
                 $sim = self::computeHybridSimilarity($textA, $textB);
                 $maxSimilarity = max($maxSimilarity, $sim);
                 $simPct = (int)round($sim * 100);
-                $questionMatches[$qid] = ['similarity' => $simPct, 'matched' => ($sim >= self::PAIR_THRESHOLD)];
+
+                $origQidA = (string)($aAns['question_id'] ?? $normQid);
+                $origQidB = (string)($bAns['question_id'] ?? $normQid);
+                $qType = (string)($aAns['question_type'] ?? ($bAns['question_type'] ?? 'essay'));
+
+                $qMatchInfo = [
+                    'qid_a'       => $origQidA,
+                    'qid_b'       => $origQidB,
+                    'norm_qid'    => $normQid,
+                    'similarity'  => $simPct,
+                    'matched'     => ($sim >= self::PAIR_THRESHOLD),
+                    'text_a'      => $textA,
+                    'text_b'      => $textB,
+                    'q_type'      => $qType,
+                ];
+
+                $questionMatches[$origQidA] = $qMatchInfo;
+                $questionMatches[$origQidB] = $qMatchInfo;
+                $questionMatches[$normQid]  = $qMatchInfo;
+
+                $questionDetails[] = [
+                    'question_id'    => $origQidA,
+                    'question_type'  => $qType,
+                    'similarity_pct' => $simPct,
+                    'answer_a'       => $textA,
+                    'answer_b'       => $textB,
+                ];
 
                 if ($sim >= self::PAIR_THRESHOLD) {
                     $matchingQuestions++;
@@ -336,25 +395,27 @@ final class SimilarityEngine
             // Content-based all-pairs matching across questions
             $total = min(count($aQ), count($bQ));
             if ($total < 1) {
-                return ['similarity' => 0, 'matched' => 0, 'total' => 0, 'question_matches' => []];
+                return ['similarity' => 0, 'matched' => 0, 'total' => 0, 'question_matches' => [], 'question_details' => []];
             }
 
             $usedB = [];
             foreach ($aQ as $ak => $aAns) {
-                $textA = $aAns['answer_text'] ?? '';
+                $textA = (string)($aAns['answer_text'] ?? '');
                 if (trim($textA) === '') continue;
 
                 $bestSim = 0.0;
                 $bestBk = null;
+                $bestBAns = null;
                 foreach ($bQ as $bk => $bAns) {
                     if (isset($usedB[$bk])) continue;
-                    $textB = $bAns['answer_text'] ?? '';
+                    $textB = (string)($bAns['answer_text'] ?? '');
                     if (trim($textB) === '') continue;
 
                     $sim = self::computeHybridSimilarity($textA, $textB);
                     if ($sim > $bestSim) {
                         $bestSim = $sim;
                         $bestBk = $bk;
+                        $bestBAns = $bAns;
                     }
                 }
 
@@ -363,7 +424,32 @@ final class SimilarityEngine
                 }
                 $maxSimilarity = max($maxSimilarity, $bestSim);
                 $simPct = (int)round($bestSim * 100);
-                $questionMatches[$ak] = ['similarity' => $simPct, 'matched' => ($bestSim >= self::PAIR_THRESHOLD)];
+
+                $origQidA = (string)($aAns['question_id'] ?? $ak);
+                $origQidB = (string)($bestBAns['question_id'] ?? ($bestBk ?? $ak));
+                $qType = (string)($aAns['question_type'] ?? 'essay');
+
+                $qMatchInfo = [
+                    'qid_a'       => $origQidA,
+                    'qid_b'       => $origQidB,
+                    'norm_qid'    => $normalizeKey((string)$origQidA),
+                    'similarity'  => $simPct,
+                    'matched'     => ($bestSim >= self::PAIR_THRESHOLD),
+                    'text_a'      => $textA,
+                    'text_b'      => (string)($bestBAns['answer_text'] ?? ''),
+                    'q_type'      => $qType,
+                ];
+
+                $questionMatches[$origQidA] = $qMatchInfo;
+                $questionMatches[$origQidB] = $qMatchInfo;
+
+                $questionDetails[] = [
+                    'question_id'    => $origQidA,
+                    'question_type'  => $qType,
+                    'similarity_pct' => $simPct,
+                    'answer_a'       => $textA,
+                    'answer_b'       => (string)($bestBAns['answer_text'] ?? ''),
+                ];
 
                 if ($bestSim >= self::PAIR_THRESHOLD) {
                     $matchingQuestions++;
@@ -372,16 +458,15 @@ final class SimilarityEngine
         }
 
         // S_i as proportion of matched questions (Eq 3.11 / Eq 3.13)
-        $similarityPct = $total > 0 ? (int)round(($matchingQuestions / $total) * 100) : 0;
-        if ($similarityPct === 0 && $maxSimilarity >= 0.70) {
-            $similarityPct = (int)round($maxSimilarity * 100);
-        }
+        // If an essay question has high similarity, set overall similarity to max question similarity
+        $similarityPct = (int)round($maxSimilarity * 100);
 
         return [
             'similarity'        => min(100, $similarityPct),
             'matched'           => $matchingQuestions,
             'total'             => $total,
             'question_matches'  => $questionMatches,
+            'question_details'  => $questionDetails,
         ];
     }
 
@@ -569,25 +654,34 @@ final class SimilarityEngine
 
     private static function persistPairs(PDO $db, int $accountId, int $intId, int $quizId, array $pairs): void
     {
+        try {
+            $db->exec("ALTER TABLE similarity_pairs ADD COLUMN IF NOT EXISTS question_details MEDIUMTEXT NULL");
+        } catch (\Throwable $e) {}
+
         $db->prepare("DELETE FROM similarity_pairs WHERE (account_id = :a OR account_id = 0) AND (exam_id = :eid OR exam_id = :qid)")
            ->execute([':a' => $accountId, ':eid' => $intId, ':qid' => $quizId]);
 
         $st = $db->prepare(
             "INSERT INTO similarity_pairs
-             (account_id, exam_id, student_a_id, student_b_id, similarity_pct, matching_questions, total_questions)
-             VALUES (:a, :e, :sa, :sb, :sim, :match, :total)"
+             (account_id, exam_id, student_a_id, student_b_id, similarity_pct, matching_questions, total_questions, question_details)
+             VALUES (:a, :e, :sa, :sb, :sim, :match, :total, :details)"
         );
 
         foreach ($pairs as $p) {
-            if ($p['similarity'] < 10) continue;
+            $stA = (int)$p['student_a'];
+            $stB = (int)$p['student_b'];
+            if ($stA === $stB) continue; // Never persist self-pair
+
+            $detailsJson = !empty($p['question_details']) ? json_encode($p['question_details'], JSON_UNESCAPED_UNICODE) : null;
             $st->execute([
-                ':a'     => $accountId,
-                ':e'     => $intId,
-                ':sa'    => $p['student_a'],
-                ':sb'    => $p['student_b'],
-                ':sim'   => $p['similarity'],
-                ':match' => $p['matched'],
-                ':total' => $p['total'],
+                ':a'       => $accountId,
+                ':e'       => $intId,
+                ':sa'      => min($stA, $stB),
+                ':sb'      => max($stA, $stB),
+                ':sim'     => (int)$p['similarity'],
+                ':match'   => (int)$p['matched'],
+                ':total'   => (int)$p['total'],
+                ':details' => $detailsJson,
             ]);
         }
     }
@@ -598,21 +692,23 @@ final class SimilarityEngine
         foreach ($pairs as $p) {
             if ($p['similarity'] < 10) continue;
 
-            $sA = $p['session_a'];
-            $sB = $p['session_b'];
+            $sA = (string)($p['session_a'] ?? '');
+            $sB = (string)($p['session_b'] ?? '');
+            $stA = (int)$p['student_a'];
+            $stB = (int)$p['student_b'];
 
-            if (!isset($sessions[$sA]) || $sessions[$sA]['max_similarity'] < $p['similarity']) {
+            if (!empty($sA) && (!isset($sessions[$sA]) || $sessions[$sA]['max_similarity'] < $p['similarity'])) {
                 $sessions[$sA] = [
                     'max_similarity' => $p['similarity'],
                     'match_count'    => $p['matched'],
-                    'student_id'     => $p['student_a'],
+                    'student_id'     => $stA,
                 ];
             }
-            if (!isset($sessions[$sB]) || $sessions[$sB]['max_similarity'] < $p['similarity']) {
+            if (!empty($sB) && (!isset($sessions[$sB]) || $sessions[$sB]['max_similarity'] < $p['similarity'])) {
                 $sessions[$sB] = [
                     'max_similarity' => $p['similarity'],
                     'match_count'    => $p['matched'],
-                    'student_id'     => $p['student_b'],
+                    'student_id'     => $stB,
                 ];
             }
         }
@@ -623,15 +719,16 @@ final class SimilarityEngine
     {
         $st = $db->prepare(
             "UPDATE session_summaries
-             SET similarity_max_score   = :max,
-                 similarity_match_count = :match
-             WHERE session_id = :s"
+             SET similarity_max_score   = GREATEST(COALESCE(similarity_max_score, 0), :max),
+                 similarity_match_count = GREATEST(COALESCE(similarity_match_count, 0), :match)
+             WHERE session_id = :s OR (student_id = :stid AND exam_id > 0)"
         );
         foreach ($sessions as $sid => $data) {
             $st->execute([
-                ':max'   => $data['max_similarity'],
-                ':match' => $data['match_count'],
+                ':max'   => (int)$data['max_similarity'],
+                ':match' => (int)$data['match_count'],
                 ':s'     => $sid,
+                ':stid'  => (int)($data['student_id'] ?? 0),
             ]);
         }
     }

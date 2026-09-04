@@ -703,7 +703,7 @@ final class TeacherPortalController
 
         $pairs = Database::fetchAll(
             'SELECT sp.student_a_id, sp.student_b_id, sp.similarity_pct,
-                    sp.matching_questions, sp.total_questions, sp.detected_at
+                    sp.matching_questions, sp.total_questions, sp.detected_at, sp.question_details
              FROM similarity_pairs sp
              WHERE (sp.account_id = ? OR sp.account_id = 0) AND (sp.exam_id = ? OR sp.exam_id = ?) AND sp.similarity_pct >= ?
              ORDER BY sp.similarity_pct DESC
@@ -747,6 +747,7 @@ final class TeacherPortalController
             $userB = $nameMap[$sb]['username'] ?? '';
             $simScore = (int)round((float)$p['similarity_pct']);
             $riskLvl = ($simScore >= 75 ? 'critical' : ($simScore >= 50 ? 'high' : ($simScore >= 25 ? 'medium' : 'low')));
+            $qDetails = !empty($p['question_details']) ? json_decode($p['question_details'], true) : [];
 
             $result[] = [
                 'student_a' => [
@@ -763,6 +764,7 @@ final class TeacherPortalController
                 'matching_questions'=> (int)$p['matching_questions'],
                 'total_questions'   => (int)$p['total_questions'],
                 'detected_at'       => $p['detected_at'],
+                'question_details'  => $qDetails ?: [],
                 // COMPATIBILITY with SimilarityDetection.jsx:
                 'student1_id'       => $sa,
                 'student1_name'     => $nameA,
@@ -1087,7 +1089,7 @@ final class TeacherPortalController
         $pairs = Database::fetchAll(
             "SELECT sp.student_a_id, sp.student_b_id, sp.similarity_pct,
                     sp.matching_questions, sp.total_questions, sp.detected_at,
-                    sp.exam_id, e.name AS exam_name
+                    sp.exam_id, sp.question_details, e.name AS exam_name
              FROM similarity_pairs sp
              JOIN exams e ON (e.id = sp.exam_id OR e.moodle_quiz_id = sp.exam_id)
              WHERE (sp.account_id = ? OR sp.account_id = 0) AND e.moodle_course_id IN ($in) $examFilter AND sp.similarity_pct >= ?
@@ -1124,6 +1126,7 @@ final class TeacherPortalController
             $userB = $nameMap[$sb]['username'] ?? '';
             $simScore = (int)round((float)$p['similarity_pct']);
             $riskLvl = ($simScore >= 75 ? 'critical' : ($simScore >= 50 ? 'high' : ($simScore >= 25 ? 'medium' : 'low')));
+            $qDetails = !empty($p['question_details']) ? json_decode($p['question_details'], true) : [];
 
             $result[] = [
                 'student_a' => ['id' => $sa, 'fullname' => $nameA, 'username' => $userA],
@@ -1133,6 +1136,7 @@ final class TeacherPortalController
                 'total_questions' => (int)$p['total_questions'],
                 'detected_at' => $p['detected_at'],
                 'exam_id' => (int)$p['exam_id'], 'exam_name' => $p['exam_name'] ?? '',
+                'question_details' => $qDetails ?: [],
                 // COMPATIBILITY with SimilarityDetection.jsx:
                 'student1_id'       => $sa,
                 'student1_name'     => $nameA,
@@ -1473,7 +1477,7 @@ final class TeacherPortalController
                     ar.ai_score, ar.ai_detection_provider, ar.created_at,
                     COALESCE(ar.similarity_score, 0) AS similarity_score,
                     COALESCE(ar.similarity_with_student_id, 0) AS similarity_with_student_id,
-                    st_p.fullname AS partner_fullname, st_p.username AS partner_username,
+                    st_p.fullname AS partner_name, st_p.fullname AS partner_fullname, st_p.username AS partner_username,
                     e.name AS exam_name, ar.exam_id
                FROM answer_records ar
                INNER JOIN (
@@ -1488,6 +1492,67 @@ final class TeacherPortalController
               LIMIT 100",
             [$actualStudentId, $moodleUserId, $accountId, $actualStudentId, $moodleUserId, $accountId]
         );
+
+        // Dynamic fallback / enrichment for answers: if similarity is missing or 0 for essay answers, compare against peers
+        require_once __DIR__ . '/../SimilarityEngine.php';
+        foreach ($answers as &$ans) {
+            $ansText = trim((string)($ans['answer_text'] ?? ''));
+            $sim = (int)($ans['similarity_score'] ?? 0);
+            $pName = (string)($ans['partner_name'] ?? '');
+
+            if (($sim === 0 || empty($pName)) && mb_strlen($ansText) >= 8 && !in_array(strtolower($ans['question_type'] ?? ''), ['multichoice', 'truefalse', 'true_false', 'match'], true)) {
+                $examId = (int)($ans['exam_id'] ?? 0);
+                $qid = (string)$ans['question_id'];
+                
+                // Fetch other students' answers for this question in this exam
+                $otherAnswers = Database::fetchAll(
+                    "SELECT ar.student_id, ar.answer_text, st.fullname, st.username
+                     FROM answer_records ar
+                     LEFT JOIN students st ON (st.id = ar.student_id OR st.moodle_user_id = ar.student_id)
+                     WHERE (ar.exam_id = ? OR ar.exam_id IN (SELECT id FROM exams WHERE moodle_quiz_id = ? OR id = ?))
+                       AND ar.student_id != ? AND ar.student_id != ?
+                       AND (ar.question_id = ? OR ar.question_id LIKE ?)
+                       AND TRIM(COALESCE(ar.answer_text, '')) != ''
+                     ORDER BY ar.id DESC LIMIT 50",
+                    [$examId, $examId, $examId, $actualStudentId, $moodleUserId, $qid, '%' . substr($qid, -2)]
+                );
+
+                $bestSim = 0;
+                $bestPartner = '';
+                $bestPartnerUser = '';
+                $bestPartnerId = 0;
+
+                foreach ($otherAnswers as $oa) {
+                    $otherText = (string)($oa['answer_text'] ?? '');
+                    $score = (int)round(\App\SimilarityEngine::computeHybridSimilarity($ansText, $otherText) * 100);
+                    if ($score > $bestSim) {
+                        $bestSim = $score;
+                        $bestPartner = (string)($oa['fullname'] ?? ('طالب #' . $oa['student_id']));
+                        $bestPartnerUser = (string)($oa['username'] ?? '');
+                        $bestPartnerId = (int)$oa['student_id'];
+                    }
+                }
+
+                if ($bestSim >= 20) {
+                    $ans['similarity_score'] = $bestSim;
+                    $ans['partner_name'] = $bestPartner;
+                    $ans['partner_fullname'] = $bestPartner;
+                    $ans['partner_username'] = $bestPartnerUser;
+                    $ans['similarity_with_student_id'] = $bestPartnerId;
+
+                    try {
+                        Database::execute(
+                            "UPDATE answer_records 
+                             SET similarity_score = GREATEST(similarity_score, ?),
+                                 similarity_with_student_id = ?
+                             WHERE (student_id = ? OR student_id = ?) AND (question_id = ? OR question_id LIKE ?)",
+                            [$bestSim, $bestPartnerId, $actualStudentId, $moodleUserId, $qid, '%' . substr($qid, -2)]
+                        );
+                    } catch (\Throwable $e) {}
+                }
+            }
+        }
+        unset($ans);
 
         // Fetch deep clipboard history (copies and pastes with full text)
         $clipboardEvents = Database::fetchAll(

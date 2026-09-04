@@ -69,65 +69,143 @@ function StudentAvatar({ name, username, id }) {
 }
 
 function SimilarityPair({ pair, index }) {
- const c = similarityColor(pair.similarity_score)
+  const [expanded, setExpanded] = useState(false)
+  const c = similarityColor(pair.similarity_score)
+  const details = pair.question_details || []
 
- return (
- <Reveal delay={index * 60}>
- <Card className="p-5 transition-all duration-300 hover:shadow-lg:shadow-slate-900/40"hover glow>
- <div className="flex flex-col gap-4">
- <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
- <div className="flex w-full items-center justify-center gap-3 sm:w-auto sm:flex-1">
- <StudentAvatar
- name={pair.student1_name}
- username={pair.student1_username}
- id={pair.student1_id}
- />
- </div>
+  return (
+    <Reveal delay={index * 60}>
+      <Card className="p-5 transition-all duration-300 hover:shadow-lg hover:shadow-slate-900/10" hover glow>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
+            <div className="flex w-full items-center justify-center gap-3 sm:w-auto sm:flex-1">
+              <StudentAvatar
+                name={pair.student1_name}
+                username={pair.student1_username}
+                id={pair.student1_id}
+              />
+            </div>
 
- <div className="flex flex-col items-center gap-1">
- <div className={`flex h-12 w-12 items-center justify-center rounded-full ring-2 ${c.ring} ${c.bg} shadow-md ${c.glow}`}>
- <svg width="20"height="20"viewBox="0 0 24 24"fill="none"stroke="currentColor"strokeWidth="2.5"strokeLinecap="round"strokeLinejoin="round"className={c.text}>
- <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
- <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
- </svg>
- </div>
- <span className="text-[11px] font-extrabold text-slate-400">VS</span>
- </div>
+            <div className="flex flex-col items-center gap-1">
+              <div className={`flex h-12 w-12 items-center justify-center rounded-full ring-2 ${c.ring} ${c.bg} shadow-md ${c.glow}`}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={c.text}>
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+              </div>
+              <span className="text-[11px] font-extrabold text-slate-400">VS</span>
+            </div>
 
- <div className="flex w-full items-center justify-center gap-3 sm:w-auto sm:flex-1">
- <StudentAvatar
- name={pair.student2_name}
- username={pair.student2_username}
- id={pair.student2_id}
- />
- </div>
- </div>
+            <div className="flex w-full items-center justify-center gap-3 sm:w-auto sm:flex-1">
+              <StudentAvatar
+                name={pair.student2_name}
+                username={pair.student2_username}
+                id={pair.student2_id}
+              />
+            </div>
+          </div>
 
- <div className="space-y-2.5">
- <div className="flex items-center justify-between">
- <span className="text-xs font-bold text-slate-500">نسبة التشابه</span>
- <span className={`text-lg font-extrabold tabular-nums ${c.text}`}>
- {fmtNum(pair.similarity_score)}%
- </span>
- </div>
- <AnimatedBar score={pair.similarity_score} delay={index * 60} />
- </div>
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500">نسبة التشابه</span>
+              <span className={`text-lg font-extrabold tabular-nums ${c.text}`}>
+                {fmtNum(pair.similarity_score)}%
+              </span>
+            </div>
+            <AnimatedBar score={pair.similarity_score} delay={index * 60} />
+          </div>
 
- <div className="flex flex-wrap items-center gap-2">
- <RiskBadge level={pair.risk_level} />
- <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold text-slate-500 ring-1 ring-slate-200">
- {fmtNum(pair.matching_questions)}/{fmtNum(pair.total_questions)} أسئلة متطابقة
- </span>
- {pair.exam_name && (
- <span className="rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-bold text-brand-600 ring-1 ring-brand-200">
- {pair.exam_name}
- </span>
- )}
- </div>
- </div>
- </Card>
- </Reveal>
- )
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+            <div className="flex flex-wrap items-center gap-2">
+              <RiskBadge level={pair.risk_level} />
+              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold text-slate-500 ring-1 ring-slate-200">
+                {fmtNum(pair.matching_questions)}/{fmtNum(pair.total_questions)} أسئلة متطابقة
+              </span>
+              {pair.exam_name && (
+                <span className="rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-bold text-brand-600 ring-1 ring-brand-200">
+                  {pair.exam_name}
+                </span>
+              )}
+            </div>
+
+            {details.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setExpanded(!expanded)}
+                className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-extrabold bg-slate-100 hover:bg-brand-50 text-slate-700 hover:text-brand-700 transition-all border border-slate-200/80 active:scale-95 cursor-pointer shadow-xs"
+              >
+                <span>{expanded ? '▲ إخفاء المقارنة' : '👁️ فحص ومقارنة الإجابات'}</span>
+                <span className="rounded-full bg-brand-100 text-brand-700 px-2 py-0.5 text-[10px] font-black">
+                  {details.length}
+                </span>
+              </button>
+            )}
+          </div>
+
+          {expanded && details.length > 0 && (
+            <div className="mt-3 space-y-3.5 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 animate-in fade-in duration-200">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200/80 text-xs">
+                <span className="font-extrabold text-slate-800 flex items-center gap-1.5">
+                  <span>📑</span> مقارنة نصوص الإجابات المقالية جنباً إلى جنب
+                </span>
+                <span className="text-[11px] font-bold text-slate-400">
+                  الخوارزمية الهجينة (Trigram Cosine + Levenshtein LND)
+                </span>
+              </div>
+
+              {details.map((q, qIdx) => {
+                const qSim = q.similarity_pct || 0
+                const qColor = similarityColor(qSim)
+                return (
+                  <div key={qIdx} className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs transition-shadow hover:shadow-sm">
+                    <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-black text-slate-700 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200/60">
+                          {q.question_id || `سؤال #${qIdx + 1}`}
+                        </span>
+                        {q.question_type && (
+                          <span className="rounded-full bg-violet-50 text-violet-700 px-2 py-0.5 text-[10px] font-extrabold border border-violet-200/60">
+                            {q.question_type}
+                          </span>
+                        )}
+                      </div>
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-black ring-1 ${qColor.ring} ${qColor.bg} ${qColor.text}`}>
+                        <span>🔗</span> {qSim}% تطابق
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-right">
+                      <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3">
+                        <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-200/60">
+                          <span className="text-[11px] font-black text-slate-600">
+                            إجابة: <span className="text-brand-700">{pair.student1_name}</span>
+                          </span>
+                        </div>
+                        <p className="whitespace-pre-wrap text-xs font-medium text-slate-800 leading-relaxed max-h-44 overflow-y-auto font-sans select-text">
+                          {q.answer_a ? q.answer_a : <span className="italic text-slate-400">لا توجد إجابة مسجلة</span>}
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3">
+                        <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-200/60">
+                          <span className="text-[11px] font-black text-slate-600">
+                            إجابة: <span className="text-brand-700">{pair.student2_name}</span>
+                          </span>
+                        </div>
+                        <p className="whitespace-pre-wrap text-xs font-medium text-slate-800 leading-relaxed max-h-44 overflow-y-auto font-sans select-text">
+                          {q.answer_b ? q.answer_b : <span className="italic text-slate-400">لا توجد إجابة مسجلة</span>}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </Card>
+    </Reveal>
+  )
 }
 
 export default function SimilarityDetection({ courseId: propCourseId, examId: propExamId }) {
