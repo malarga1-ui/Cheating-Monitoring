@@ -403,7 +403,32 @@ export function StudentTable({ students, compact = false, onAction = null }) {
               <tr key={s.student_id || s.id} onClick={() => navigate(`/teacher/portal/students/${s.student_id || s.id}`)}
                 className={`cursor-pointer transition-colors hover:bg-brand-50/30 ${s.risk_level === 'critical' ? 'bg-red-50/30' : s.risk_level === 'high' ? 'bg-orange-50/20' : ''}`}>
                 <td className="px-4 py-3">
-                  <p className="font-bold text-slate-700">{s.fullname}</p>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <p className="font-bold text-slate-700">{s.fullname}</p>
+                    {s.connectivity_status === 'live' && (
+                      <span title="متصل الآن ونشط - نبضات القلب والبيانات تتدفق بانتظام" className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700 ring-1 ring-emerald-200">
+                        <span className="relative flex h-2 w-2">
+                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+                        </span>
+                        متصل
+                      </span>
+                    )}
+                    {s.connectivity_status === 'interrupted' && (
+                      <span
+                        title={`انقطاع مراقبة منذ ${s.seconds_since_last_event > 60 ? Math.floor(s.seconds_since_last_event / 60) + ' د' : (s.seconds_since_last_event || 0) + ' ث'} - لم تصل نبضات القلب (قد يكون عطلاً تقنياً في الشبكة أو المتصفح دون أي أثر على درجة الخطر)`}
+                        className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-black text-amber-700 ring-1 ring-amber-300"
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
+                        ⚠️ انقطاع مراقبة ({s.seconds_since_last_event > 60 ? Math.floor(s.seconds_since_last_event / 60) + ' د' : (s.seconds_since_last_event || 0) + ' ث'})
+                      </span>
+                    )}
+                    {s.connectivity_status === 'not_started' && (
+                      <span className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-400">
+                        لم يبدأ
+                      </span>
+                    )}
+                  </div>
                   <p className="text-[11px] text-slate-400">{s.username}</p>
                 </td>
                 {!compact && <td className="px-3 py-3 text-center text-xs font-bold text-slate-600">{s.exams_count || 0}</td>}
@@ -828,6 +853,7 @@ function ExamDetail() {
   const [data, setData] = useState(null)
   const [students, setStudents] = useState(null)
   const [sortBy, setSortBy] = useState('risk_desc')
+  const [connFilter, setConnFilter] = useState('all')
   const [actionModal, setActionModal] = useState({ open: false, type: '', student: null })
   const [confirmModal, setConfirmModal] = useState({ open: false, title: '', message: '' })
 
@@ -879,15 +905,23 @@ function ExamDetail() {
     }
   }
 
+  const liveCount = useMemo(() => (students || []).filter(s => s.connectivity_status === 'live').length, [students])
+  const interruptedCount = useMemo(() => (students || []).filter(s => s.connectivity_status === 'interrupted').length, [students])
+
   const sorted = useMemo(() => {
     let list = [...(students || [])]
+    if (connFilter === 'live') {
+      list = list.filter(s => s.connectivity_status === 'live')
+    } else if (connFilter === 'interrupted') {
+      list = list.filter(s => s.connectivity_status === 'interrupted')
+    }
     list.sort((a, b) => {
       if (sortBy === 'risk_asc') return (a.risk_score || 0) - (b.risk_score || 0)
       if (sortBy === 'name') return (a.fullname || '').localeCompare(b.fullname || '', 'ar')
       return (b.risk_score || 0) - (a.risk_score || 0)
     })
     return list
-  }, [students, sortBy])
+  }, [students, sortBy, connFilter])
 
   if (!data) return <Spinner />
   const counts = data.counts || {}
@@ -912,9 +946,50 @@ function ExamDetail() {
         <StatCard value={counts.suspicious || 0} label="مشبوهون" tone={counts.suspicious > 0 ? 'text-rose-600' : 'text-emerald-600'} />
       </div>
 
-      <section>
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-sm font-extrabold text-slate-700">الطلاب ({sorted.length})</h3>
+      {interruptedCount > 0 && (
+        <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-3.5 text-xs text-amber-900 shadow-sm animate-fade-in">
+          <span className="text-2xl">📡</span>
+          <div>
+            <p className="font-black text-amber-900">
+              تنبيه اتصال: يوجد {interruptedCount} {interruptedCount === 1 ? 'طالب' : 'طلاب'} توقف تدفق نبضات المراقبة منهم لأكثر من 40 ثانية.
+            </p>
+            <p className="text-[11px] font-semibold text-amber-800/80 mt-0.5">
+              تم تصنيف الحالة كـ "انقطاع مراقبة تقني" دون رفع درجة الخطر الأكاديمي للطالب حفاظاً على العدالة ومراعاة أعطال الشبكة والمتصفح.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-extrabold text-slate-700">الطلاب ({sorted.length})</h3>
+            <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+              <button
+                type="button"
+                onClick={() => setConnFilter('all')}
+                className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${connFilter === 'all' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                الكل ({(students || []).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setConnFilter('live')}
+                className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all flex items-center gap-1.5 ${connFilter === 'live' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+                متصلون ({liveCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setConnFilter('interrupted')}
+                className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all flex items-center gap-1.5 ${connFilter === 'interrupted' ? 'bg-amber-600 text-white shadow-sm' : interruptedCount > 0 ? 'text-amber-700 font-black' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
+                انقطاع مراقبة ({interruptedCount})
+              </button>
+            </div>
+          </div>
           <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 outline-none">
             <option value="risk_desc">خطورة ↓</option>
             <option value="risk_asc">خطورة ↑</option>

@@ -77,6 +77,7 @@ final class Analytics
                     SUM(ss.other_count) AS other_count,
                     MIN(ss.first_event_at) AS first_event_at,
                     MAX(ss.last_event_at) AS last_event_at,
+                    TIMESTAMPDIFF(SECOND, MAX(ss.last_event_at), NOW()) AS seconds_since_last_event,
                     MAX(ss.same_ip_student_count) AS same_ip_student_count,
                     MAX(ss.ip_changed_count) AS ip_changed_count,
                     MAX(ss.same_ip_risk_score) AS same_ip_risk_score,
@@ -166,6 +167,17 @@ final class Analytics
                     'other_count' => (int)$r['other_count'],
                     'first_event_at' => $r['first_event_at'],
                     'last_event_at' => $r['last_event_at'],
+                    'seconds_since_last_event' => isset($r['seconds_since_last_event']) && $r['seconds_since_last_event'] !== null ? (int)$r['seconds_since_last_event'] : null,
+                    'connectivity_status' => (function() use ($r) {
+                        $sec = isset($r['seconds_since_last_event']) && $r['seconds_since_last_event'] !== null ? (int)$r['seconds_since_last_event'] : null;
+                        if ($sec === null || (int)($r['event_count'] ?? 0) === 0) {
+                            return 'not_started';
+                        }
+                        if ($sec <= 45) {
+                            return 'live';
+                        }
+                        return 'interrupted';
+                    })(),
                     'same_ip_student_count' => (int)($r['same_ip_student_count'] ?? 0),
                     'ip_changed_count' => (int)($r['ip_changed_count'] ?? 0),
                     'same_ip_risk_score' => (int)($r['same_ip_risk_score'] ?? 0),
@@ -198,7 +210,8 @@ final class Analytics
                             SUM(CASE WHEN e.event_type = 'copy' THEN 1 ELSE 0 END) AS copy_count,
                             SUM(CASE WHEN e.event_type = 'devtools_shortcut' THEN 1 ELSE 0 END) AS devtools_count,
                             MIN(e.event_time) AS first_event_at,
-                            MAX(e.event_time) AS last_event_at
+                            MAX(e.event_time) AS last_event_at,
+                            TIMESTAMPDIFF(SECOND, MAX(e.event_time), NOW()) AS seconds_since_last_event
                        FROM events e
                        LEFT JOIN students st ON (st.moodle_user_id = e.moodle_user_id OR st.id = e.moodle_user_id)
                       WHERE (
@@ -257,6 +270,17 @@ final class Analytics
                         'other_count' => 0,
                         'first_event_at' => $er['first_event_at'],
                         'last_event_at' => $er['last_event_at'],
+                        'seconds_since_last_event' => isset($er['seconds_since_last_event']) && $er['seconds_since_last_event'] !== null ? (int)$er['seconds_since_last_event'] : null,
+                        'connectivity_status' => (function() use ($er) {
+                            $sec = isset($er['seconds_since_last_event']) && $er['seconds_since_last_event'] !== null ? (int)$er['seconds_since_last_event'] : null;
+                            if ($sec === null || (int)($er['event_count'] ?? 0) === 0) {
+                                return 'not_started';
+                            }
+                            if ($sec <= 45) {
+                                return 'live';
+                            }
+                            return 'interrupted';
+                        })(),
                         'same_ip_student_count' => 0,
                         'ip_changed_count' => 0,
                         'same_ip_risk_score' => 0,
