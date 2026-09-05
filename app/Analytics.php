@@ -11,11 +11,12 @@ final class Analytics
     public static function examStudents(int $examId, int $explicitAccountId = 0): array
     {
         $exam = Database::fetchOne(
-            'SELECT id, moodle_quiz_id, question_count, duration_minutes, account_id FROM exams
+            'SELECT id, moodle_quiz_id, question_count, duration_minutes, account_id, status FROM exams
               WHERE id = ? OR moodle_quiz_id = ?
               ORDER BY (account_id = ?) DESC LIMIT 1',
             [$examId, $examId, $explicitAccountId]
         );
+        $isExamEnded    = ($exam && ($exam['status'] ?? '') === 'ended');
         $internalExamId = $exam ? (int)$exam['id'] : $examId;
         $mQuizId        = $exam ? (int)$exam['moodle_quiz_id'] : $examId;
         $questionCount  = (int)($exam['question_count'] ?? 0);
@@ -168,10 +169,13 @@ final class Analytics
                     'first_event_at' => $r['first_event_at'],
                     'last_event_at' => $r['last_event_at'],
                     'seconds_since_last_event' => isset($r['seconds_since_last_event']) && $r['seconds_since_last_event'] !== null ? (int)$r['seconds_since_last_event'] : null,
-                    'connectivity_status' => (function() use ($r) {
+                    'connectivity_status' => (function() use ($r, $isExamEnded) {
                         $sec = isset($r['seconds_since_last_event']) && $r['seconds_since_last_event'] !== null ? (int)$r['seconds_since_last_event'] : null;
                         if ($sec === null || (int)($r['event_count'] ?? 0) === 0) {
                             return 'not_started';
+                        }
+                        if ($isExamEnded || $sec > 900) {
+                            return 'submitted';
                         }
                         if ($sec <= 45) {
                             return 'live';
@@ -271,10 +275,13 @@ final class Analytics
                         'first_event_at' => $er['first_event_at'],
                         'last_event_at' => $er['last_event_at'],
                         'seconds_since_last_event' => isset($er['seconds_since_last_event']) && $er['seconds_since_last_event'] !== null ? (int)$er['seconds_since_last_event'] : null,
-                        'connectivity_status' => (function() use ($er) {
+                        'connectivity_status' => (function() use ($er, $isExamEnded) {
                             $sec = isset($er['seconds_since_last_event']) && $er['seconds_since_last_event'] !== null ? (int)$er['seconds_since_last_event'] : null;
                             if ($sec === null || (int)($er['event_count'] ?? 0) === 0) {
                                 return 'not_started';
+                            }
+                            if ($isExamEnded || $sec > 900) {
+                                return 'submitted';
                             }
                             if ($sec <= 45) {
                                 return 'live';

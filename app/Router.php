@@ -67,18 +67,23 @@ final class Router
                         $named[$k] = rawurldecode($v);
                     }
                 }
-                if (empty($named)) {
-                    $route['handler']();
-                } elseif ($route['firstType'] === 'array') {
-                    // Handler expects array $params — pass associative array
-                    $route['handler']($named);
-                } else {
-                    // Handler expects individual typed params — pass values in order, auto-casting numeric strings to int
-                    $args = [];
-                    foreach ($named as $val) {
-                        $args[] = (is_numeric($val) && (string)(int)$val === $val) ? (int)$val : $val;
+                try {
+                    if (empty($named)) {
+                        $route['handler']();
+                    } elseif ($route['firstType'] === 'array') {
+                        // Handler expects array $params — pass associative array
+                        $route['handler']($named);
+                    } else {
+                        // Handler expects individual typed params — pass values in order, auto-casting numeric strings to int
+                        $args = [];
+                        foreach ($named as $val) {
+                            $args[] = (is_numeric($val) && (string)(int)$val === $val) ? (int)$val : $val;
+                        }
+                        $route['handler'](...$args);
                     }
-                    $route['handler'](...$args);
+                } catch (\Throwable $e) {
+                    error_log('[Router Dispatch Error] ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
+                    Response::error($e->getMessage() . ' in ' . basename($e->getFile()) . ':' . $e->getLine(), 500);
                 }
                 return;
             }

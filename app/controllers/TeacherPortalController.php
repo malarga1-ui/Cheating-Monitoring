@@ -1747,6 +1747,7 @@ final class TeacherPortalController
         $sessions = Database::fetchAll(
             "SELECT ss.session_id, ss.exam_id, ss.ip_address, e.name AS exam_name, e.moodle_course_id,
                     c.name AS course_name,
+                    COALESCE(e.duration_minutes, 0) AS duration_minutes,
                     ss.first_event_at, ss.last_event_at, ss.event_count,
                     ss.risk_score, ss.risk_level,
                     ss.same_ip_student_count, ss.same_ip_risk_score,
@@ -2037,12 +2038,16 @@ final class TeacherPortalController
                 $started = $s['first_event_at'];
                 $last = $s['last_event_at'];
                 $spent = ($started && $last) ? max(0, strtotime($last) - strtotime($started)) : 0;
+                $durMin = (int)($s['duration_minutes'] ?? 0);
+                if ($durMin <= 0 && $spent > 0) {
+                    $durMin = max(15, (int)(ceil(($spent / 60) / 5) * 5));
+                }
                 return [
                     'session_id'           => $s['session_id'],
                     'exam_id'              => (int)$s['exam_id'],
                     'exam_name'            => $s['exam_name'],
                     'course_name'          => $s['course_name'],
-                    'duration_minutes'     => (int)($s['duration_minutes'] ?? 0),
+                    'duration_minutes'     => $durMin,
                     'time_spent_seconds'   => $spent,
                     'ip_address'           => !empty($s['ip_address']) ? (string)$s['ip_address'] : (string)$lastIp,
                     'started_at'           => $s['first_event_at'],

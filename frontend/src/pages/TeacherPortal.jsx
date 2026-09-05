@@ -414,9 +414,17 @@ export function StudentTable({ students, compact = false, onAction = null }) {
                         متصل
                       </span>
                     )}
+                    {s.connectivity_status === 'submitted' && (
+                      <span
+                        title="انتهى الطالب من الامتحان وسلّم إجاباته بنجاح"
+                        className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 ring-1 ring-slate-200"
+                      >
+                        ✅ تم التسليم
+                      </span>
+                    )}
                     {s.connectivity_status === 'interrupted' && (
                       <span
-                        title={`انقطاع مراقبة منذ ${s.seconds_since_last_event > 60 ? Math.floor(s.seconds_since_last_event / 60) + ' د' : (s.seconds_since_last_event || 0) + ' ث'} - لم تصل نبضات القلب (قد يكون عطلاً تقنياً في الشبكة أو المتصفح دون أي أثر على درجة الخطر)`}
+                        title={`انقطاع مراقبة أثناء الامتحان منذ ${s.seconds_since_last_event > 60 ? Math.floor(s.seconds_since_last_event / 60) + ' د' : (s.seconds_since_last_event || 0) + ' ث'} - لم تصل نبضات القلب (قد يكون عطلاً تقنياً في الشبكة أو المتصفح دون أي أثر على درجة الخطر)`}
                         className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-black text-amber-700 ring-1 ring-amber-300"
                       >
                         <span className="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
@@ -907,6 +915,7 @@ function ExamDetail() {
 
   const liveCount = useMemo(() => (students || []).filter(s => s.connectivity_status === 'live').length, [students])
   const interruptedCount = useMemo(() => (students || []).filter(s => s.connectivity_status === 'interrupted').length, [students])
+  const submittedCount = useMemo(() => (students || []).filter(s => s.connectivity_status === 'submitted').length, [students])
 
   const sorted = useMemo(() => {
     let list = [...(students || [])]
@@ -914,6 +923,8 @@ function ExamDetail() {
       list = list.filter(s => s.connectivity_status === 'live')
     } else if (connFilter === 'interrupted') {
       list = list.filter(s => s.connectivity_status === 'interrupted')
+    } else if (connFilter === 'submitted') {
+      list = list.filter(s => s.connectivity_status === 'submitted')
     }
     list.sort((a, b) => {
       if (sortBy === 'risk_asc') return (a.risk_score || 0) - (b.risk_score || 0)
@@ -987,6 +998,14 @@ function ExamDetail() {
               >
                 <span className="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
                 انقطاع مراقبة ({interruptedCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setConnFilter('submitted')}
+                className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all flex items-center gap-1.5 ${connFilter === 'submitted' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                <span>✅</span>
+                تم التسليم ({submittedCount})
               </button>
             </div>
           </div>
@@ -1679,7 +1698,7 @@ function StudentDetail() {
                       <td className="px-4 py-3 font-bold text-slate-700">{ss.exam_name}</td>
                       <td className="px-4 py-3 text-slate-500 text-xs">{ss.course_name || '—'}</td>
                       <td className="px-3 py-3 text-center text-xs font-bold text-slate-600">
-                        {ss.duration_minutes > 0 ? `${ss.duration_minutes} دقيقة` : '—'}
+                        {ss.duration_minutes > 0 ? `${ss.duration_minutes} دقيقة` : (ss.time_spent_seconds > 0 ? `${Math.ceil(ss.time_spent_seconds / 60)} دقيقة` : '—')}
                       </td>
                       <td className="px-3 py-3 text-center">
                         <span className="inline-flex rounded-lg bg-slate-100 px-2 py-0.5 text-xs font-extrabold text-slate-700" dir="ltr">

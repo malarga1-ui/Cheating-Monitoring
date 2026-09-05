@@ -502,8 +502,8 @@ final class TeacherActionController
                 return [$where, $params];
             };
 
-            // 1. Pending actions
-            [$pendingWhere, $pendingParams] = $buildMatch('status = "pending"');
+            // 1. Pending and unacknowledged actions (continue offering until student client acknowledges)
+            [$pendingWhere, $pendingParams] = $buildMatch('status IN ("pending", "delivered") AND status NOT IN ("acknowledged", "expired") AND created_at >= (NOW() - INTERVAL 10 MINUTE)');
             $actions = Database::fetchAll(
                 "SELECT id, action_type, message, minutes_to_reduce, created_at
                  FROM teacher_actions
@@ -517,7 +517,7 @@ final class TeacherActionController
             foreach ($actions as $a) {
                 try {
                     Database::execute(
-                        'UPDATE teacher_actions SET status = "delivered", delivered_at = NOW() WHERE id = ? AND status = "pending"',
+                        'UPDATE teacher_actions SET status = "delivered", delivered_at = COALESCE(delivered_at, NOW()) WHERE id = ? AND status = "pending"',
                         [(int)$a['id']]
                     );
                     Database::execute(

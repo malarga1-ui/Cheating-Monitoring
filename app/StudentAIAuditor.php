@@ -182,7 +182,13 @@ final class StudentAIAuditor
         $ended = $sessionSummary['last_event_at'];
         $spentSecs = ($started && $ended) ? max(0, strtotime($ended) - strtotime($started)) : 0;
         $spentMins = round($spentSecs / 60, 1);
-        $scheduledMins = (int)($sessionSummary['duration_minutes'] ?? 60);
+        $scheduledMins = (int)($sessionSummary['duration_minutes'] ?? 0);
+        if ($scheduledMins <= 0 && $spentMins > 0) {
+            $scheduledMins = max(15, (int)(ceil($spentMins / 5) * 5));
+        }
+        if ($scheduledMins <= 0) {
+            $scheduledMins = 30;
+        }
 
         // 4. Fetch Student Answers for this exam
         $answers = Database::fetchAll(
@@ -270,7 +276,7 @@ final class StudentAIAuditor
 2. فكك تصرفات الطالب بموضوعية ودقة مع تقديم تبريرات منطقية مقنعة مبنية على البيانات:
    - تحليل النسخ (Copy): ماذا نسخ الطالب؟ هل نسخ نص السؤال حرفياً؟ إذا كان ما نسخه نص السؤال، فهذا مؤشر قوي جداً على محاولة الاستعانة بمحركات بحث خارجية أو برامج ذكاء اصطناعي.
    - تحليل اللصق (Paste): كم عدد عمليات اللصق؟ هل تم لصق إجابات مقالية طويلة في ثوانٍ معدودة دون كتابة تدريجية طبيعية (Typing Biometrics)؟
-   - تحليل زمن الامتحان (Time & Velocity): هل حل الامتحان في وقت قياسي مريب مقارنة بالمدة المحددة للامتحان؟
+   - تحليل زمن الامتحان وسرعة الإنجاز (Time & Velocity): قارن بدقة بين مدة الامتحان المحددة (المقررة) والوقت الفعلي الذي استغرقه الطالب. اذكر مدة الامتحان المحددة والوقت المستغرق صراحة في بطاقة الفحص وفي التحليل الزمني، وبيّن هل أنهى الطالب الامتحان بسرعة مريبة تفوق القدرة البشرية (Velocity Anomaly)، أم استغرق وقتاً كافياً للتفكير والإجابة.
    - مغادرة شاشة الامتحان (Tab Switches & DevTools): عدد مرات فتح نوافذ أخرى أو فحص الكود.
    - التطابق مع الزملاء (Similarity): هل تشابهت إجاباته مع إجابات طالب آخر؟ مع من وما نسبته؟
    - فحص الذكاء الاصطناعي (AI Generated Content): نسبة استخدام الذكاء الاصطناعي في إجاباته المقالية.
